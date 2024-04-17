@@ -4,3 +4,4 @@ checkpoints_sam/
 logs/
 source/
 visual_result/
+enhance_sam.egg-info/
