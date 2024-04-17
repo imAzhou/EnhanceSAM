@@ -1,7 +1,6 @@
 .vscode/
 build/
 checkpoints_sam/
-dali_images/
 logs/
 source/
 visual_result/
