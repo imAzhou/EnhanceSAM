@@ -1,0 +1,6 @@
+.vscode/
+build/
+checkpoints_sam/
+logs/
+source/
+visual_result/

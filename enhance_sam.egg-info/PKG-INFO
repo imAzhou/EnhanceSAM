@@ -1,0 +1,10 @@
+Metadata-Version: 2.1
+Name: enhance-sam
+Version: 0.1.0
+Summary: enhance sam with semantic
+Home-page: https://github.com/your_username/your_package
+Author: Linyun Zhou
+Author-email: zhoulyaxx@zju.edu.cn
+Classifier: Programming Language :: Python :: 3
+
+Long description of your package
