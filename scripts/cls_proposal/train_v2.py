@@ -3,11 +3,13 @@ import os
 import torch
 import argparse
 import torch.optim as optim
-from help_func.tools import set_seed,get_parameter_number
-from models.cls_proposal import ClsProposalNet
+from utils import (
+    set_seed,get_parameter_number,
+    BinaryDiceLoss
+)
+from models.cls_proposal_v2 import ClsProposalNet
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
 from utils.loss_mask import loss_masks
-from utils.losses import DiceLoss, FocalLoss, BinaryDiceLoss
 from utils.logger import create_logger
 from tqdm import tqdm
 from datasets.building_dataset import BuildingDataset
@@ -44,7 +46,7 @@ args = parser.parse_args()
 if __name__ == "__main__":
     set_seed(args.seed)
     device = torch.device(args.device)
-    record_save_dir = 'logs/cls_proposal'
+    record_save_dir = 'logs/cls_proposal_v2'
     
     # register model
     model = ClsProposalNet(
@@ -55,15 +57,15 @@ if __name__ == "__main__":
     model.train()
     
     dataset_config = dict(
-        whu = 'source/WHU-Building_aug' if args.use_aug else 'source/WHU-Building',
+        whu = 'source/WHU-Building',
         inria = 'source/InriaBuildingDataset'
     )
     # load datasets
     train_dataset = BuildingDataset(
         data_root = dataset_config[args.dataset_name],
         mode = 'train',
-        use_embed = True,
-        # use_aug = args.use_aug
+        # use_embed = True,
+        use_aug = args.use_aug
     )
     
     trainloader = DataLoader(
@@ -72,15 +74,9 @@ if __name__ == "__main__":
         shuffle=True,
         num_workers=0,
         drop_last=True)
-    
-    # set loss function
-    # ce_loss_fn = CrossEntropyLoss(ignore_index = 255)
-    # dice_loss_fn = DiceLoss(args.num_classes, ignore_index = 255)
-    # focal_loss_fn = FocalLoss(balance_param= 1-args.dice_param)
 
     bce_loss_fn = BCEWithLogitsLoss()
     dice_loss_fn = BinaryDiceLoss()
-
 
     if args.warmup:
         b_lr = args.base_lr / args.warmup_period
@@ -123,11 +119,9 @@ if __name__ == "__main__":
         for i_batch, sampled_batch in enumerate(trainloader):
             mask_1024 = sampled_batch['mask_1024'].to(device)
             mask_512 = sampled_batch['mask_512'].to(device)
+            bs_input_image = sampled_batch['input_image'].to(device)
             
-            bs_image_embedding = sampled_batch['img_embed'].to(device)
-            
-            outputs = model(bs_image_embedding, mask_1024)
-
+            outputs = model(bs_input_image, mask_1024)
             pred_logits = outputs['pred_mask_512']  # shape: [bs, num_classes, 512, 512]
             
             if args.calc_sample_loss:
@@ -164,14 +158,14 @@ if __name__ == "__main__":
         logger.info(f"save model to {save_mode_path}")
 
 '''
-python scripts/cls_proposal/train.py \
-    --max_epochs 6 \
+python scripts/cls_proposal/train_v2.py \
+    --max_epochs 12 \
     --batch_size 16 \
-    --num_points 3 0 \
+    --num_points 1 0 \
     --base_lr 0.0001 \
     --use_module conv \
     --dataset_name whu \
-    --calc_sample_loss
+    --calc_sample_loss \
     --use_aug
     --debug_mode
 '''

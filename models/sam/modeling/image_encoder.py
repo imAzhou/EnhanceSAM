@@ -104,17 +104,21 @@ class ImageEncoderViT(nn.Module):
             LayerNorm2d(out_chans),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, need_inter: False) -> torch.Tensor:
         x = self.patch_embed(x)
         if self.pos_embed is not None:
             x = x + self.pos_embed
 
-        inter_features = []
+        inter_feature = None
         for blk in self.blocks:
             x = blk(x)
-            inter_features.append(x)
+            if blk.window_size == 0 and inter_feature == None:
+                inter_feature = x
 
         x = self.neck(x.permute(0, 3, 1, 2))
+
+        if need_inter:
+            return x,inter_feature
 
         return x
 

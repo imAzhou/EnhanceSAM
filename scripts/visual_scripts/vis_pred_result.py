@@ -2,8 +2,8 @@ import time
 import os
 import torch
 import argparse
-from help_func.tools import set_seed
-from models.cls_proposal import ClsProposalNet
+from utils import set_seed
+from models.cls_proposal_v2 import ClsProposalNet
 from tqdm import tqdm
 from datasets.building_dataset import BuildingDataset
 # from datasets.loveda import LoveDADataset
@@ -31,7 +31,7 @@ args = parser.parse_args()
 if __name__ == "__main__":
     set_seed(args.seed)
     device = torch.device(args.device)
-    record_save_dir = f'logs/cls_proposal/{args.dir_name}'
+    record_save_dir = f'logs/cls_proposal_v2/{args.dir_name}'
     
     # register model
     model = ClsProposalNet(
@@ -42,14 +42,14 @@ if __name__ == "__main__":
     model.eval()
     
     dataset_config = dict(
-        whu = 'datasets/WHU-Building',
-        inria = 'datasets/InriaBuildingDataset'
+        whu = 'source/WHU-Building',
+        inria = 'source/InriaBuildingDataset'
     )
     # load datasets
     dataset = BuildingDataset(
         data_root = dataset_config[args.dataset_name],
         mode = 'val',
-        use_embed = True
+        # use_embed = True
     )
     dataloader = DataLoader(
         dataset,
@@ -64,18 +64,11 @@ if __name__ == "__main__":
     model.load_parameters(pth_load_path)
     for i_batch, sampled_batch in enumerate(tqdm(dataloader, ncols=70)):
         mask_1024 = sampled_batch['mask_1024'].to(device)
-        bs_image_embedding = sampled_batch['img_embed'].to(device)
+        bs_input_image = sampled_batch['input_image'].to(device)
         
-        outputs = model(bs_image_embedding, mask_1024)
-
-        pred_logits = outputs['low_res_masks']
+        outputs = model(bs_input_image, mask_1024)
         # shape: [num_classes, 1024, 1024]
-        pred_logits = F.interpolate(
-            pred_logits,
-            (512, 512),
-            mode="bilinear",
-            align_corners=False,
-        ).squeeze(0)
+        pred_logits = outputs['pred_mask_512']
 
         pred_mask = (pred_logits>0).detach().cpu()
         gt_origin_masks = sampled_batch['mask_512']
@@ -114,9 +107,9 @@ if __name__ == "__main__":
     print(str(metrics) + '\n')
 
 '''
-python scripts/cls_proposal/vis_pred_result.py \
-    --dir_name whu-sota \
-    --ckpt_name epoch_17\
+python scripts/visual_scripts/vis_pred_result.py \
+    --dir_name 2024_04_18_07_17_24 \
+    --ckpt_name epoch_4 \
     --num_points 1 0 \
     --use_module conv \
     --dataset_name whu
