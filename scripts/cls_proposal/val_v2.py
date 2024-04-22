@@ -2,7 +2,7 @@ import time
 import os
 import torch
 import argparse
-from models.cls_proposal import ClsProposalNet
+from models.cls_proposal_v2 import ClsProposalNet
 from tqdm import tqdm
 from utils import set_seed
 # from datasets.loveda import LoveDADataset
@@ -33,7 +33,7 @@ args = parser.parse_args()
 if __name__ == "__main__":
     set_seed(args.seed)
     device = torch.device(args.device)
-    record_save_dir = f'logs/cls_proposal/{args.dir_name}'
+    record_save_dir = f'logs/cls_proposal_v2/{args.dir_name}'
     
     # register model
     model = ClsProposalNet(
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     dataset = BuildingDataset(
         data_root = dataset_config[args.dataset_name],
         mode = 'val',
-        use_embed = True
+        # use_embed = True
     )
     dataloader = DataLoader(
         dataset,
@@ -72,8 +72,8 @@ if __name__ == "__main__":
         model.load_parameters(pth_load_path)
         for i_batch, sampled_batch in enumerate(tqdm(dataloader, ncols=70)):
             mask_1024 = sampled_batch['mask_1024'].to(device)
-            bs_image_embedding = sampled_batch['img_embed'].to(device)
-            outputs = model(bs_image_embedding, mask_1024)
+            bs_input_image = sampled_batch['input_image'].to(device)
+            outputs = model(bs_input_image, mask_1024)
 
             # shape: [num_classes, 1024, 1024]
             pred_logits = outputs['pred_mask_512'].squeeze(0)
@@ -98,11 +98,11 @@ if __name__ == "__main__":
         f.write(str(all_miou))
 
 '''
-python scripts/cls_proposal/val.py \
-    --dir_name 2024_04_18_10_59_42 \
+python scripts/cls_proposal/val_v2.py \
+    --dir_name 2024_04_19_03_54_36 \
     --batch_size 1 \
-    --num_points 3 0 \
-    --max_epochs 6 \
+    --num_points 1 0 \
+    --max_epochs 12 \
     --use_module conv \
     --dataset_name whu
     --device cuda:1 \

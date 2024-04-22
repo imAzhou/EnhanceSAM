@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from help_func.tools import gene_point_embed
-from help_func.build_sam import sam_model_registry
+from utils import gene_point_embed
+from models.sam.build_sam import sam_model_registry
 from .mask_decoder import MaskDecoder
 from .cls_transformer import TwoWayTransformer
 import torch.nn.functional as F
@@ -19,7 +19,10 @@ class ClsProposalNet(nn.Module):
         self.num_points = num_points
         self.num_classes = num_classes
         sam = sam_model_registry['vit_h'](checkpoint = sam_ckpt)
+        self.image_encoder = sam.image_encoder
         self.prompt_encoder = sam.prompt_encoder
+        self.preprocess = sam.preprocess
+        
         transformer_dim = sam.mask_decoder.transformer_dim
         self.mask_decoder = MaskDecoder(
             num_classes_outputs = num_classes,
@@ -30,12 +33,15 @@ class ClsProposalNet(nn.Module):
                 num_heads = 8,
                 useModule = useModule,
             ),
-            transformer_dim = transformer_dim
+            transformer_dim = transformer_dim,
+            encoder_embed_dim = 1280
         )
 
         self.except_keys = [
             'cls_tokens', 
             'cls_mlps',
+            'process_inter_feat',
+            'upscaling_inter_feat'
         ]
         if useModule == 'transformer':
             self.except_keys.extend([
@@ -58,11 +64,14 @@ class ClsProposalNet(nn.Module):
         self.load_sam_parameters(sam.mask_decoder.state_dict())
         self.freeze_parameters()
 
-    def load_sam_parameters(self, sam_mask_decoder_params: dict):        
+    def load_sam_parameters(self, sam_mask_decoder_params: dict):
         decoder_state_dict = {}
+        discard_keys = [
+            'output_hypernetworks_mlps',
+        ]
         for key,value in sam_mask_decoder_params.items():
             key_first = key.split('.')[0]
-            if key_first not in self.except_keys:
+            if key_first not in [*self.except_keys, *discard_keys]:
                 decoder_state_dict[key] = value
 
         print('='*10 + ' load parameters from sam ' + '='*10)
@@ -73,6 +82,8 @@ class ClsProposalNet(nn.Module):
         print('='*59)
 
     def freeze_parameters(self):
+        for name, param in self.image_encoder.named_parameters():
+            param.requires_grad = False
         for name, param in self.prompt_encoder.named_parameters():
             param.requires_grad = False
         
@@ -97,12 +108,46 @@ class ClsProposalNet(nn.Module):
     def load_parameters(self, filename: str) -> None:
         assert filename.endswith(".pt") or filename.endswith('.pth')
         state_dict = torch.load(filename)
-        self.mask_decoder.load_state_dict(state_dict['mask_decoder'], strict = False)
+        print('='*10 + ' load parameters for mask decoder ' + '='*10)
+        print(self.mask_decoder.load_state_dict(state_dict['mask_decoder'], strict = False))
+        print('='*59)
+        
 
-    def forward(self, bs_image_embedding: torch.Tensor,
-                label_mask: torch.Tensor):
+    def forward(self, image_batch: torch.Tensor, label_mask: torch.Tensor):
+        device = image_batch.device
+        with torch.no_grad():
+            # input_images.shape: [bs, 3, 1024, 1024]
+            input_images = self.preprocess(image_batch.cpu()).to(device)
+            # bs_image_embedding.shape: [bs, c=256, h=64, w=64]
+            bs_image_embedding,inter_feature = self.image_encoder(input_images, need_inter=True)
+            bs_image_embedding,inter_feature = bs_image_embedding.detach(),inter_feature.detach()
+        
+        sparse,dense,coords = self.gene_prompt_embed(bs_image_embedding,label_mask)
+
+        image_pe = self.prompt_encoder.get_dense_pe()
+        low_res_masks = self.mask_decoder(
+            image_embeddings = bs_image_embedding,
+            image_pe = image_pe,
+            sparse_prompt_embeddings = sparse,
+            dense_prompt_embeddings = dense,
+            inter_feature = inter_feature
+        )
+        input_sam_size_masks = F.interpolate(
+            low_res_masks,
+            (1024, 1024),
+            mode="bilinear",
+            align_corners=False,
+        )
+        outputs = {
+            'pred_mask_512': low_res_masks,
+            'pred_mask_1024': input_sam_size_masks,
+            'points': coords,
+        }
+
+        return outputs
+    
+    def gene_prompt_embed(self, bs_image_embedding, label_mask):
         device = bs_image_embedding.device
-        # bs_sparse_embedding,points = gene_point_embed(self, torch.logical_not(single_label.cpu()), [self.num_points, 0], device)
         bs_sparse_embedding = []
         bs_points_coord = []
         for single_label in label_mask:
@@ -128,82 +173,4 @@ class ClsProposalNet(nn.Module):
             b, -1, h, w
         )
 
-        image_pe=self.prompt_encoder.get_dense_pe()
-        # bs_sparse_embedding, dense_embeddings = self.prompt_encoder(
-        #     points=None,
-        #     boxes=None,
-        #     masks=None,
-        # )
-        
-        # low_res_masks, attn_token_to_image = self.mask_decoder(
-        low_res_masks = self.mask_decoder(
-            image_embeddings=bs_image_embedding,
-            # image_pe: (bs_img, [C]256, [H]64, [W]64)
-            image_pe=image_pe,
-            sparse_prompt_embeddings=bs_sparse_embedding,
-            dense_prompt_embeddings=dense_embeddings,
-        )
-        input_sam_size_masks = F.interpolate(
-            low_res_masks,
-            (1024, 1024),
-            mode="bilinear",
-            align_corners=False,
-        )
-        outputs = {
-            'pred_mask_512': low_res_masks,
-            'pred_mask_1024': input_sam_size_masks,
-            'points': bs_points_coord,
-            # 'attn_token_to_image': attn_token_to_image
-        }
-
-        return outputs
-    
-    def forward_with_ppo(self, bs_image_embedding: torch.Tensor,
-                input_boxes: torch.Tensor):
-        '''
-        Args:
-            bs_image_embedding: tensor, shape is (bs, 256, 64, 64)
-            input_boxes: tensor, shape is (bs, num_boxes, 4), coord format is x1y1x2y2 in 1024*1024 scale
-        '''
-        bs_low_res_masks = []
-        for single_boxes,single_emb in zip(input_boxes,bs_image_embedding):
-            if torch.sum(single_boxes) < 0:
-                single_boxes = None
-            # single_boxes.shape: (num_boxes, 4)
-            # sparse_embeddings.shape: (num_boxes, 2, 256)
-            sparse_embeddings, dense_embeddings = self.prompt_encoder(
-                points=None,
-                boxes=single_boxes,
-                masks=None,
-            )
-            image_pe=self.prompt_encoder.get_dense_pe()
-            # low_res_masks.shape: (num_boxes, 1, 256, 256)
-            low_res_masks = self.mask_decoder(
-                image_embeddings=single_emb.unsqueeze(0),
-                image_pe=image_pe,
-                sparse_prompt_embeddings=sparse_embeddings,
-                dense_prompt_embeddings=dense_embeddings,
-            )
-            if sparse_embeddings.shape[1] == 0:
-                low_res_masks = torch.repeat_interleave(low_res_masks, self.num_points[0], dim=0)
-            
-            low_res_masks = torch.mean(low_res_masks, dim=0)
-            bs_low_res_masks.append(low_res_masks)
-        
-        bs_low_res_masks = torch.cat(bs_low_res_masks, dim=0)
-        low_res_h,low_res_w = bs_low_res_masks.shape[-2:]
-        bs_low_res_masks = bs_low_res_masks.view((-1, 1, low_res_h,low_res_w)).contiguous()
-        
-        # input_sam_size_masks.shape: (bs, num_classes, 1024, 1024)
-        input_sam_size_masks = F.interpolate(
-            bs_low_res_masks,
-            (self.input_size, self.input_size),
-            mode="bilinear",
-            align_corners=False,
-        )
-        outputs = {
-            'low_res_masks': bs_low_res_masks,
-            'pred_logits': input_sam_size_masks,
-        }
-
-        return outputs
+        return bs_sparse_embedding,dense_embeddings,bs_points_coord

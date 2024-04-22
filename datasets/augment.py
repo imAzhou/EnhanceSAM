@@ -24,8 +24,9 @@ class Pad(torch.nn.Module):
 
 
 class RandomFlip(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, prob):
         super().__init__()
+        self.prob = prob
 
     def forward(self, img):
         """
@@ -35,6 +36,6 @@ class RandomFlip(torch.nn.Module):
             Tensor: Padded image.
         """
         if np.random.rand() < 0.5:
-            return transforms.RandomVerticalFlip(p=1.)(img)
+            return transforms.RandomVerticalFlip(p=self.prob)(img)
         else:
-            return transforms.RandomHorizontalFlip(p=1.)(img)
+            return transforms.RandomHorizontalFlip(p=self.prob)(img)

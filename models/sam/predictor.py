@@ -7,7 +7,7 @@
 import numpy as np
 import torch
 
-from .sam import Sam
+from .modeling.sam import Sam
 
 from typing import Optional, Tuple
 

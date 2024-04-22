@@ -93,6 +93,8 @@ class BuildingDataset(Dataset):
             aug_img, aug_gt = self.gene_aug_data(image, image_mask)
         else:
             aug_img, aug_gt = self.gene_origin_data(image, image_mask)
+        
+        # self._showimg_and_mask(aug_img, aug_gt)
 
         for size in self.mask_resize_sizes:
             transform = ResizeLongestSide(size)
@@ -103,7 +105,7 @@ class BuildingDataset(Dataset):
         data['mask_1024'] = aug_gt
 
         return data
-
+    
     def gene_aug_data(self, image: np.ndarray, image_mask: np.ndarray):
         '''
         Args:
@@ -115,20 +117,17 @@ class BuildingDataset(Dataset):
         '''
         image = torch.as_tensor(image).permute(2, 0, 1).contiguous()
         image_mask = torch.as_tensor(image_mask).unsqueeze(0)
-        concat_pair = torch.cat([image, image_mask], dim=0)
+        concat_pair = torch.cat([image, image_mask], dim=0).unsqueeze(0)
 
         common_transform = T.Compose([
-            T.Resize((512, 512)),  # 缩放到指定大小
-            Pad()
+            T.Resize((1024, 1024)),  # 缩放到指定大小
+            Pad(),
+            RandomFlip(prob=0.5),
+            T.RandomAffine(degrees=20),
+            T.RandomResizedCrop((1024, 1024), scale=(0.6, 1.4))
         ])
-        origin_pair = common_transform(concat_pair).unsqueeze(0)
-        flip_img = RandomFlip()(origin_pair)
-        rotate_img = T.RandomAffine(degrees=45)(origin_pair)
-        scale_img = T.RandomResizedCrop((512, 512), scale=(0.6, 1.4))(origin_pair)
-        cat_imgs = torch.cat([origin_pair, flip_img, rotate_img, scale_img], dim=0)
-        grid_image = make_grid(cat_imgs, nrow=2, padding=0)
-
-        aug_img,aug_gt = grid_image[:3],grid_image[3:].squeeze(0)
+        origin_pair = common_transform(concat_pair).squeeze(0)
+        aug_img,aug_gt = origin_pair[:3],origin_pair[3:].squeeze(0)
 
         return aug_img,aug_gt
 
@@ -161,3 +160,31 @@ class BuildingDataset(Dataset):
         plt.axis('off')
         plt.tight_layout()
         plt.savefig('img_and_mask_origin.png')
+
+    def gene_aug_data_cat(self, image: np.ndarray, image_mask: np.ndarray):
+        '''
+        Args:
+            - image: ndarry, shape is (h,w,c)
+            - image_mask: ndarray, shape is (h,w)
+        Return:
+            - aug_img: tensor, shape is (c, 1024, 1024)
+            - aug_gt: tensor, shape is (1024, 1024)
+        '''
+        image = torch.as_tensor(image).permute(2, 0, 1).contiguous()
+        image_mask = torch.as_tensor(image_mask).unsqueeze(0)
+        concat_pair = torch.cat([image, image_mask], dim=0)
+
+        common_transform = T.Compose([
+            T.Resize((512, 512)),  # 缩放到指定大小
+            Pad()
+        ])
+        origin_pair = common_transform(concat_pair).unsqueeze(0)
+        flip_img = RandomFlip()(origin_pair)
+        rotate_img = T.RandomAffine(degrees=45)(origin_pair)
+        scale_img = T.RandomResizedCrop((512, 512), scale=(0.6, 1.4))(origin_pair)
+        cat_imgs = torch.cat([origin_pair, flip_img, rotate_img, scale_img], dim=0)
+        grid_image = make_grid(cat_imgs, nrow=2, padding=0)
+
+        aug_img,aug_gt = grid_image[:3],grid_image[3:].squeeze(0)
+
+        return aug_img,aug_gt
