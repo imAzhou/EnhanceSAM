@@ -14,7 +14,7 @@ if __name__ == "__main__":
     image_size = 1024
     batch_size = 1
     dataset_name = 'WHU-Building'   # WHU-Building  InriaBuildingDataset
-    use_aug = True
+    use_aug = False
     # register model
     sam = sam_model_registry['vit_h'](image_size = image_size,
                                         checkpoint = 'checkpoints_sam/sam_vit_h_4b8939.pth',
@@ -22,13 +22,13 @@ if __name__ == "__main__":
     sam.eval()
 
     # for mode in ['train','val']:
-    for mode in ['train']:
+    for mode in ['val']:
         tail = 'aug_tensor' if use_aug else 'tensor'
-        tensor_save_dir = f'datasets/{dataset_name}/img_dir/{mode}_{tail}'
+        tensor_save_dir = f'source/{dataset_name}/img_dir/{mode}_{tail}'
         os.makedirs(tensor_save_dir, exist_ok=True)
         # load datasets
         val_dataset = BuildingDataset(
-            data_root = f'datasets/{dataset_name}',
+            data_root = f'source/{dataset_name}',
             mode = mode,
             use_aug = use_aug
         )

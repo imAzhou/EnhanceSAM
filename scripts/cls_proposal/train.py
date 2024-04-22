@@ -165,7 +165,7 @@ if __name__ == "__main__":
 
 '''
 python scripts/cls_proposal/train.py \
-    --max_epochs 12 \
+    --max_epochs 24 \
     --batch_size 16 \
     --num_points 1 0 \
     --base_lr 0.0001 \

@@ -50,8 +50,8 @@ if __name__ == "__main__":
     
     # load datasets
     dataset_config = dict(
-        whu = 'datasets/WHU-Building',
-        inria = 'datasets/InriaBuildingDataset'
+        whu = 'source/WHU-Building',
+        inria = 'source/InriaBuildingDataset'
     )
     dataset = BuildingDataset(
         data_root = dataset_config[args.dataset_name],
@@ -111,7 +111,7 @@ if __name__ == "__main__":
 
 '''
 python scripts/cls_proposal/val.py \
-    --dir_name 2024_04_17_07_00_37 \
+    --dir_name 2024_04_18_10_59_42 \
     --batch_size 1 \
     --num_points 1 0 \
     --max_epochs 24 \

@@ -155,9 +155,9 @@ class TwoWayAttentionBlock(nn.Module):
             self.global_self_attn = nn.TransformerEncoderLayer(embedding_dim, num_heads, mlp_dim, dropout=0.01)
         if self.useModule == 'conv':
             self.local_conv = nn.Sequential(
-                nn.Conv2d(embedding_dim, embedding_dim//2, kernel_size=5, padding='same'),
+                nn.Conv2d(embedding_dim, embedding_dim//2, kernel_size=3, padding='same'),
                 nn.ReLU(),
-                nn.Conv2d(embedding_dim//2, embedding_dim, kernel_size=5, padding='same'),
+                nn.Conv2d(embedding_dim//2, embedding_dim, kernel_size=3, padding='same'),
             )
             # self.local_conv_norm = nn.LayerNorm(embedding_dim)
         if self.useModule == 'both':
