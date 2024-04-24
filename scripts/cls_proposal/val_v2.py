@@ -99,7 +99,7 @@ if __name__ == "__main__":
 
 '''
 python scripts/cls_proposal/val_v2.py \
-    --dir_name 2024_04_19_03_54_36 \
+    --dir_name 2024_04_24_03_12_28 \
     --batch_size 1 \
     --num_points 1 0 \
     --max_epochs 12 \
