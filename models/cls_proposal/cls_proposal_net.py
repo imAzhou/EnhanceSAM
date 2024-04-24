@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from help_func.tools import gene_point_embed
-from help_func.build_sam import sam_model_registry
+from utils import gene_point_embed
+from models.sam.build_sam import sam_model_registry
 from .mask_decoder import MaskDecoder
 from .cls_transformer import TwoWayTransformer
 import torch.nn.functional as F
@@ -58,11 +58,14 @@ class ClsProposalNet(nn.Module):
         self.load_sam_parameters(sam.mask_decoder.state_dict())
         self.freeze_parameters()
 
-    def load_sam_parameters(self, sam_mask_decoder_params: dict):        
+    def load_sam_parameters(self, sam_mask_decoder_params: dict):
         decoder_state_dict = {}
+        discard_keys = [
+            'output_hypernetworks_mlps',
+        ]
         for key,value in sam_mask_decoder_params.items():
             key_first = key.split('.')[0]
-            if key_first not in self.except_keys:
+            if key_first not in [*self.except_keys, *discard_keys]:
                 decoder_state_dict[key] = value
 
         print('='*10 + ' load parameters from sam ' + '='*10)

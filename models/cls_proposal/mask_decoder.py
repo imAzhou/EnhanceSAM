@@ -10,7 +10,7 @@ from torch.nn import functional as F
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Type
 
-from models.sam import LayerNorm2d
+from models.sam.modeling import LayerNorm2d
 
 
 class MaskDecoder(nn.Module):
@@ -78,7 +78,7 @@ class MaskDecoder(nn.Module):
         self.cls_tokens = nn.Embedding(self.num_classes_outputs, transformer_dim)
         self.cls_mlps = nn.ModuleList(
             [
-                MLP(transformer_dim, transformer_dim, transformer_dim // 16, 2)
+                MLP(transformer_dim, transformer_dim, transformer_dim // 16, 3)
                 for i in range(self.num_classes_outputs)
             ]
         )

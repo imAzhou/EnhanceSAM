@@ -5,7 +5,7 @@ import argparse
 import torch.optim as optim
 from utils import (
     set_seed,get_parameter_number,
-    BinaryDiceLoss,ExponentialMovingAverage
+    BinaryDiceLoss
 )
 from models.cls_proposal import ClsProposalNet
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
@@ -38,7 +38,6 @@ parser.add_argument('--warmup_period', type=int, default=250,
 parser.add_argument('--device', type=str, default='cuda:0')
 parser.add_argument('--dice_param', type=float, default=0.8)
 parser.add_argument('--weight_decay', type=float, default=0.001)
-parser.add_argument('--ema_start', type=int, default=-1)
 parser.add_argument('--use_aug', action='store_true')
 parser.add_argument('--calc_sample_loss', action='store_true')
 parser.add_argument('--debug_mode', action='store_true', help='If activated, log dirname prefis is debug')
@@ -56,12 +55,9 @@ if __name__ == "__main__":
                 useModule = args.use_module
             ).to(device)
     model.train()
-
-    if args.ema_start >= 0:
-        ema_model = ExponentialMovingAverage(model, decay=0.2, device=device)
     
     dataset_config = dict(
-        whu = 'source/WHU-Building',
+        whu = 'source/WHU-Building_aug',
         inria = 'source/InriaBuildingDataset'
     )
     # load datasets
@@ -157,16 +153,9 @@ if __name__ == "__main__":
             iter_num = iter_num + 1
 
             logger.info(f'iteration {iter_num%max_iterations}/{max_iterations} : bce_loss : {bce_loss.item():.6f}, dice_loss : {dice_loss.item():.6f}, loss : {loss.item():.6f},  lr: {lr_:.6f}')
-        
+
         save_mode_path = os.path.join(pth_save_dir, 'epoch_' + str(epoch_num) + '.pth')
-        if args.ema_start >=0 and epoch_num >= args.ema_start:
-            ema_model.update_parameters(model)
-            merged_dict = {
-                'mask_decoder': ema_model.module.mask_decoder.state_dict()
-            }
-            torch.save(merged_dict, save_mode_path)
-        else:
-            model.save_parameters(save_mode_path)
+        model.save_parameters(save_mode_path)
         logger.info(f"save model to {save_mode_path}")
 
 '''
@@ -177,7 +166,6 @@ python scripts/cls_proposal/train.py \
     --base_lr 0.0001 \
     --use_module conv \
     --dataset_name whu \
-    --ema_start 1
     --device cuda:1
     --calc_sample_loss
     --use_aug
