@@ -99,9 +99,9 @@ if __name__ == "__main__":
 
 '''
 python scripts/cls_proposal/val.py \
-    --dir_name 2024_04_23_11_17_04 \
+    --dir_name 2024_04_24_22_54_23 \
     --batch_size 1 \
-    --num_points 1 0 \
+    --num_points 0 0 \
     --max_epochs 12 \
     --use_module conv \
     --dataset_name whu

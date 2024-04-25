@@ -173,9 +173,10 @@ if __name__ == "__main__":
 python scripts/cls_proposal/train.py \
     --max_epochs 12 \
     --batch_size 16 \
-    --num_points 1 0 \
+    --num_points 0 0 \
     --base_lr 0.0001 \
     --use_module conv \
+    --dice_param 0.5
     --dataset_name whu \
     --ema_start 1
     --device cuda:1
