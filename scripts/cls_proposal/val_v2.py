@@ -45,8 +45,8 @@ if __name__ == "__main__":
     
     # load datasets
     dataset_config = dict(
-        whu = 'source/WHU-Building',
-        inria = 'source/InriaBuildingDataset'
+        whu = '/x22201018/datasets/RemoteSensingDatasets/WHU-Building',
+        inria = '/x22201018/datasets/RemoteSensingDatasets/InriaBuildingDataset'
     )
     dataset = BuildingDataset(
         data_root = dataset_config[args.dataset_name],
@@ -99,11 +99,11 @@ if __name__ == "__main__":
 
 '''
 python scripts/cls_proposal/val_v2.py \
-    --dir_name 2024_04_24_03_12_28 \
+    --dir_name 2024_04_30_06_10_21 \
     --batch_size 1 \
     --num_points 1 0 \
-    --max_epochs 12 \
+    --max_epochs 24 \
     --use_module conv \
-    --dataset_name whu
+    --dataset_name inria
     --device cuda:1 \
 '''

@@ -33,7 +33,8 @@ class BuildingDataset(Dataset):
                  mode:str,
                  mask_resize_sizes:list[int] = [64, 256, 512],
                  use_embed: bool=False,
-                 use_aug: bool=False
+                 use_aug: bool=False,
+                 train_sample_num: int=-1
         ) -> None:
         super().__init__()
 
@@ -50,7 +51,7 @@ class BuildingDataset(Dataset):
         # with open(txt_path, 'r') as file:
         #     self.images = file.readlines()
         
-        self.images = os.listdir(f'{data_root}/img_dir/{mode}')
+        self.images = os.listdir(f'{data_root}/img_dir/{mode}')[:train_sample_num]
         
    
     def __getitem__(self, index):

@@ -26,6 +26,7 @@ parser.add_argument('--max_epochs', type=int,
                     default=12, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int,
                     default=16, help='batch_size per gpu')
+parser.add_argument('--train_sample_num', type=int, default=-1)
 parser.add_argument('--base_lr', type=float, default=0.001,
                     help='segmentation network learning rate')
 parser.add_argument('--img_size', type=int,
@@ -57,15 +58,16 @@ if __name__ == "__main__":
     model.train()
     
     dataset_config = dict(
-        whu = 'source/WHU-Building',
-        inria = 'source/InriaBuildingDataset'
+        whu = '/x22201018/datasets/RemoteSensingDatasets/WHU-Building',
+        inria = '/x22201018/datasets/RemoteSensingDatasets/InriaBuildingDataset'
     )
     # load datasets
     train_dataset = BuildingDataset(
         data_root = dataset_config[args.dataset_name],
         mode = 'train',
         # use_embed = True,
-        use_aug = args.use_aug
+        use_aug = args.use_aug,
+        train_sample_num = args.train_sample_num
     )
     
     trainloader = DataLoader(
@@ -159,13 +161,14 @@ if __name__ == "__main__":
 
 '''
 python scripts/cls_proposal/train_v2.py \
-    --max_epochs 12 \
+    --max_epochs 24 \
     --batch_size 16 \
     --num_points 1 0 \
     --base_lr 0.0001 \
     --use_module conv \
     --dataset_name whu \
     --calc_sample_loss \
-    --use_aug
+    --use_aug \
+    --train_sample_num 400
     --debug_mode
 '''

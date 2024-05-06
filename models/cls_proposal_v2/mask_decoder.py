@@ -70,10 +70,10 @@ class MaskDecoder(nn.Module):
             # nn.Conv2d(embed_dim, embed_dim, kernel_size=1),
             nn.Conv2d(embed_dim, embed_dim, kernel_size=3, padding='same'),
             # LayerNorm2d(embed_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Conv2d(embed_dim,out_chans, kernel_size=3, padding='same'),
             # LayerNorm2d(out_chans),
-            nn.ReLU(),
+            nn.GELU(),
         )
         self.upscaling_inter_feat = nn.Sequential(
             nn.ConvTranspose2d(embed_dim, transformer_dim, kernel_size=2, stride=2),
