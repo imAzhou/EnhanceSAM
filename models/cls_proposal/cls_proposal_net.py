@@ -102,11 +102,10 @@ class ClsProposalNet(nn.Module):
         state_dict = torch.load(filename)
         self.mask_decoder.load_state_dict(state_dict['mask_decoder'], strict = False)
 
-    def forward(self, bs_image_embedding: torch.Tensor,
-                label_mask: torch.Tensor):
+    def forward(self, bs_image_embedding: torch.Tensor, label_mask: torch.Tensor, use_point: bool):
         device = bs_image_embedding.device
         bs_points_coord = []
-        if sum(self.num_points) > 0:
+        if sum(self.num_points) > 0 and use_point:
             bs_sparse_embedding = []
             for single_label in label_mask:
                 sparse_embedding,single_img_points = gene_point_embed(self, single_label.cpu(), self.num_points, device)

@@ -73,7 +73,7 @@ if __name__ == "__main__":
         for i_batch, sampled_batch in enumerate(tqdm(dataloader, ncols=70)):
             mask_1024 = sampled_batch['mask_1024'].to(device)
             bs_image_embedding = sampled_batch['img_embed'].to(device)
-            outputs = model(bs_image_embedding, mask_1024)
+            outputs = model(bs_image_embedding, mask_1024, use_point = epoch_num < 10)
 
             # shape: [num_classes, 1024, 1024]
             pred_logits = outputs['pred_mask_512'].squeeze(0)
@@ -99,7 +99,7 @@ if __name__ == "__main__":
 
 '''
 python scripts/cls_proposal/val.py \
-    --dir_name 2024_04_24_22_54_23 \
+    --dir_name 2024_04_26_13_40_01 \
     --batch_size 1 \
     --num_points 0 0 \
     --max_epochs 12 \

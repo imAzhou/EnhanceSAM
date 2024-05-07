@@ -56,6 +56,8 @@ if __name__ == "__main__":
                 useModule = args.use_module
             ).to(device)
     model.train()
+    pth_load_path = f'logs/cls_proposal/2024_04_24_21_46_14/checkpoints/epoch_6.pth'
+    model.load_parameters(pth_load_path)
 
     if args.ema_start >= 0:
         ema_model = ExponentialMovingAverage(model, decay=0.2, device=device)
@@ -126,7 +128,7 @@ if __name__ == "__main__":
             mask_512 = sampled_batch['mask_512'].to(device)
             
             bs_image_embedding = sampled_batch['img_embed'].to(device)
-            outputs = model(bs_image_embedding, mask_1024)
+            outputs = model(bs_image_embedding, mask_1024, use_point = epoch_num < 10)
             pred_logits = outputs['pred_mask_512']  # shape: [bs, num_classes, 512, 512]
             
             if args.calc_sample_loss:
