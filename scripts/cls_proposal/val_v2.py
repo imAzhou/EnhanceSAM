@@ -99,11 +99,11 @@ if __name__ == "__main__":
 
 '''
 python scripts/cls_proposal/val_v2.py \
-    --dir_name 2024_04_30_06_10_21 \
+    --dir_name 2024_05_06_08_00_33 \
     --batch_size 1 \
     --num_points 1 0 \
     --max_epochs 24 \
     --use_module conv \
-    --dataset_name inria
+    --dataset_name whu
     --device cuda:1 \
 '''
