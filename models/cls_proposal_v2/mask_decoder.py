@@ -7,7 +7,6 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-import matplotlib.pyplot as plt
 from typing import List, Tuple, Type
 
 from models.sam.modeling import LayerNorm2d
@@ -67,13 +66,10 @@ class MaskDecoder(nn.Module):
         # new paramters
         embed_dim, out_chans = encoder_embed_dim, transformer_dim
         self.process_inter_feat = nn.Sequential(
-            # nn.Conv2d(embed_dim, embed_dim, kernel_size=1),
             nn.Conv2d(embed_dim, embed_dim, kernel_size=3, padding='same'),
-            # LayerNorm2d(embed_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Conv2d(embed_dim,out_chans, kernel_size=3, padding='same'),
-            # LayerNorm2d(out_chans),
-            nn.ReLU(),
+            nn.GELU(),
         )
         self.upscaling_inter_feat = nn.Sequential(
             nn.ConvTranspose2d(embed_dim, transformer_dim, kernel_size=2, stride=2),

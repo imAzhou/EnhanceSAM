@@ -13,7 +13,7 @@ class ClsProposalNet(nn.Module):
                  num_points = [0,0],
                  num_classes = 1,
                  useModule = None,
-                 sam_ckpt = 'checkpoints_sam/sam_vit_h_4b8939.pth'
+                 sam_ckpt = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth'
                 ):
         super(ClsProposalNet, self).__init__()
         self.num_points = num_points

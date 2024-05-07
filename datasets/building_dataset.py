@@ -5,7 +5,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from torchvision.transforms import InterpolationMode
 from utils import ResizeLongestSide
-from .augment import Pad, RandomFlip
+from .augment import Pad, RandomFlip, PhotoMetricDistortion
 import torchvision.transforms as T
 from torchvision.utils import make_grid
 
@@ -33,7 +33,8 @@ class BuildingDataset(Dataset):
                  mode:str,
                  mask_resize_sizes:list[int] = [64, 256, 512],
                  use_embed: bool=False,
-                 use_aug: bool=False
+                 use_aug: bool=False,
+                 train_sample_num: int=-1
         ) -> None:
         super().__init__()
 
@@ -46,11 +47,11 @@ class BuildingDataset(Dataset):
         self.use_aug = use_aug
         self.mask_resize_sizes = mask_resize_sizes
 
-        # txt_path = f'{data_root}/img_dir/{mode}.txt'
-        # with open(txt_path, 'r') as file:
-        #     self.images = file.readlines()
-        
-        self.images = os.listdir(f'{data_root}/img_dir/{mode}')
+        all_imgs = os.listdir(f'{data_root}/img_dir/{mode}')
+        if train_sample_num > 0:
+            self.images = all_imgs[:train_sample_num]
+        else:
+            self.images = all_imgs
         
    
     def __getitem__(self, index):
@@ -109,14 +110,17 @@ class BuildingDataset(Dataset):
     def gene_aug_data(self, image: np.ndarray, image_mask: np.ndarray):
         '''
         Args:
-            - image: ndarry, shape is (h,w,c)
+            - image: ndarry, shape is (h,w,c), c is rgb format
             - image_mask: ndarray, shape is (h,w)
         Return:
             - aug_img: tensor, shape is (c, 1024, 1024)
             - aug_gt: tensor, shape is (1024, 1024)
         '''
-        image = torch.as_tensor(image).permute(2, 0, 1).contiguous()
+        pmd_img = PhotoMetricDistortion()(image)
+        image = torch.as_tensor(pmd_img).permute(2, 0, 1).contiguous()
         image_mask = torch.as_tensor(image_mask).unsqueeze(0)
+        
+        # 在通道维度 concat image 和 mask
         concat_pair = torch.cat([image, image_mask], dim=0).unsqueeze(0)
 
         common_transform = T.Compose([
