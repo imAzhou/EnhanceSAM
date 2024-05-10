@@ -165,7 +165,7 @@ python scripts/cls_proposal/train_v2.py \
     --batch_size 16 \
     --num_points 1 0 \
     --base_lr 0.0001 \
-    --use_module conv \
+    --use_module both \
     --dataset_name whu \
     --calc_sample_loss \
     --use_aug \
