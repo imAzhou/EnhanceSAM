@@ -116,6 +116,7 @@ class BuildingDataset(Dataset):
             - aug_img: tensor, shape is (c, 1024, 1024)
             - aug_gt: tensor, shape is (1024, 1024)
         '''
+
         pmd_img = PhotoMetricDistortion()(image)
         image = torch.as_tensor(pmd_img).permute(2, 0, 1).contiguous()
         image_mask = torch.as_tensor(image_mask).unsqueeze(0)

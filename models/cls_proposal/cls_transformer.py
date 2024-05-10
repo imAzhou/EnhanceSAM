@@ -21,7 +21,7 @@ class TwoWayTransformer(nn.Module):
         mlp_dim: int,
         activation: Type[nn.Module] = nn.ReLU,
         attention_downsample_rate: int = 2,
-        useModule: str = None
+        useModule: str = ''
     ) -> None:
         """
         A transformer decoder that attends to an input image using
@@ -56,7 +56,8 @@ class TwoWayTransformer(nn.Module):
             )
 
         self.final_attn_token_to_image = Attention(
-            embedding_dim, num_heads, downsample_rate=attention_downsample_rate
+            embedding_dim, num_heads, 
+            internal_dim = embedding_dim // attention_downsample_rate
         )
         self.norm_final_attn = nn.LayerNorm(embedding_dim)
 
@@ -96,7 +97,6 @@ class TwoWayTransformer(nn.Module):
                 query_pe=point_embedding,
                 key_pe=image_pe,
             )
-            # tow_way_keys.append(keys.detach().cpu())
         
         # Apply the final attention layer from the points to the image
         q = queries + point_embedding
@@ -118,7 +118,7 @@ class TwoWayAttentionBlock(nn.Module):
         activation: Type[nn.Module] = nn.ReLU,
         attention_downsample_rate: int = 2,
         skip_first_layer_pe: bool = False,
-        useModule: str = None
+        useModule: str = '',
     ) -> None:
         """
         A transformer block with four layers: (1) self-attention of sparse
@@ -134,11 +134,12 @@ class TwoWayAttentionBlock(nn.Module):
           skip_first_layer_pe (bool): skip the PE on the first layer
         """
         super().__init__()
-        self.self_attn = Attention(embedding_dim, num_heads)
+        self.self_attn = Attention(embedding_dim, num_heads, embedding_dim)
         self.norm1 = nn.LayerNorm(embedding_dim)
 
         self.cross_attn_token_to_image = Attention(
-            embedding_dim, num_heads, downsample_rate=attention_downsample_rate
+            embedding_dim, num_heads, 
+            internal_dim = embedding_dim // attention_downsample_rate
         )
         self.norm2 = nn.LayerNorm(embedding_dim)
 
@@ -147,48 +148,13 @@ class TwoWayAttentionBlock(nn.Module):
 
         self.norm4 = nn.LayerNorm(embedding_dim)
         self.cross_attn_image_to_token = Attention(
-            embedding_dim, num_heads, downsample_rate=attention_downsample_rate
+            embedding_dim, num_heads, 
+            internal_dim = embedding_dim // attention_downsample_rate
         )
 
-        self.useModule = useModule
-        if self.useModule == 'transformer':
-            self.global_self_attn = nn.TransformerEncoderLayer(embedding_dim, num_heads, mlp_dim, dropout=0.01)
-        if self.useModule == 'conv':
-            self.local_conv = nn.Sequential(
-                nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=3, padding='same'),
-                nn.ReLU(),
-                nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=3, padding='same'),
-            )
-            # self.local_conv_norm = nn.LayerNorm(embedding_dim)
-        if self.useModule == 'both':
-            self.global_self_attn = nn.TransformerEncoderLayer(embedding_dim, num_heads, mlp_dim, dropout=0.01)
-            self.local_conv = nn.Sequential(
-                nn.Conv2d(embedding_dim, embedding_dim, kernel_size=3, padding='same'),
-                # nn.ReLU(),
-                # nn.Conv2d(embedding_dim, embedding_dim, kernel_size=3, padding='same')
-            )
-        # self.cls_conv = nn.Sequential(
-        #     nn.Conv2d(embedding_dim, embedding_dim//2, kernel_size=3, padding='same'),
-        #     nn.ReLU(),
-        #     nn.Conv2d(embedding_dim//2, embedding_dim, kernel_size=3, padding='same')
-        # )
-
-        # self.cls_conv_1 = nn.Sequential(
-        #     nn.Conv2d(embedding_dim, embedding_dim//2, kernel_size=3, padding='same'),
-        #     nn.ReLU(),
-        #     nn.Conv2d(embedding_dim//2, embedding_dim, kernel_size=3, padding='same')
-        # )
-        # self.cls_conv_2 = nn.Sequential(
-        #     nn.Conv2d(embedding_dim, embedding_dim//2, kernel_size=5, padding='same'),
-        #     nn.ReLU(),
-        #     nn.Conv2d(embedding_dim//2, embedding_dim, kernel_size=5, padding='same')
-        # )
-        # self.cls_conv_3 = nn.Sequential(
-        #     nn.Conv2d(embedding_dim, embedding_dim//2, kernel_size=7, padding='same'),
-        #     nn.ReLU(),
-        #     nn.Conv2d(embedding_dim//2, embedding_dim, kernel_size=7, padding='same')
-        # )
-        # self.cls_conv = MonaOp(embedding_dim)
+        self.semantic_module = SemanticModule(
+            embedding_dim, num_heads, useModule
+        )
 
         self.skip_first_layer_pe = skip_first_layer_pe
 
@@ -199,7 +165,6 @@ class TwoWayAttentionBlock(nn.Module):
         # Self attention block
         if self.skip_first_layer_pe:
             queries = self.self_attn(q=queries, k=queries, v=queries)
-
         else:
             q = queries + query_pe
             attn_out = self.self_attn(q=q, k=q, v=queries)
@@ -224,25 +189,8 @@ class TwoWayAttentionBlock(nn.Module):
         attn_out = self.cross_attn_image_to_token(q=k, k=q, v=queries)
 
         # azhou add
-        if self.useModule == 'transformer':
-            global_attn_keys = self.global_self_attn(keys)
-            keys = keys + global_attn_keys
-        if self.useModule == 'conv':
-            b,l,c = keys.shape
-            patch_size = int(math.sqrt(l))
-            local_conv_f = self.local_conv(keys.transpose(-1,-2).view(b, c, patch_size, patch_size))
-            local_conv_f = local_conv_f.flatten(2).permute(0, 2, 1)
-            # local_conv_f = self.local_conv_norm(local_conv_f)
-            keys = keys + local_conv_f
-        if self.useModule == 'both':
-            global_attn_keys = self.global_self_attn(keys)
-            b,l,c = keys.shape
-            patch_size = int(math.sqrt(l))
-            local_conv_f = self.local_conv(keys.transpose(-1,-2).view(b, c, patch_size, patch_size))
-            local_conv_f = local_conv_f.flatten(2).permute(0, 2, 1)
-            keys = keys + global_attn_keys + local_conv_f
-
-        keys = keys + attn_out
+        semantic_keys = self.semantic_module(keys)
+        keys = keys + semantic_keys + attn_out
         keys = self.norm4(keys)
 
         return queries, keys
@@ -258,11 +206,11 @@ class Attention(nn.Module):
         self,
         embedding_dim: int,
         num_heads: int,
-        downsample_rate: int = 1,
+        internal_dim: int,
     ) -> None:
         super().__init__()
         self.embedding_dim = embedding_dim
-        self.internal_dim = embedding_dim // downsample_rate
+        self.internal_dim = internal_dim
         self.num_heads = num_heads
         assert self.internal_dim % num_heads == 0, "num_heads must divide embedding_dim."
 
@@ -304,4 +252,75 @@ class Attention(nn.Module):
         out = self.out_proj(out)
 
         return out
-   
+    
+
+class SemanticModule(nn.Module):
+
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_heads: int,
+        use_module: str,
+    ) -> None:
+        super().__init__()
+        self.use_module = use_module
+        internal_dim = embedding_dim*2
+        if self.use_module == 'transformer':
+            self.cls_attn = Attention(embedding_dim, num_heads, internal_dim)
+            self.norm = nn.LayerNorm(embedding_dim)
+        if self.use_module == 'conv':
+            # self.local_conv = nn.Sequential(
+            #     nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=3, padding='same'),
+            #     nn.ReLU(),
+            #     nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=3, padding='same'),
+            # )
+            self.local_conv = nn.Sequential(
+                nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=1),
+                nn.Conv2d(embedding_dim*2, embedding_dim*2, kernel_size=3, groups=embedding_dim*2, padding='same'),
+                nn.ReLU(),
+                nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=1),
+                # nn.BatchNorm2d(embedding_dim),
+                nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=1),
+                nn.Conv2d(embedding_dim*2, embedding_dim*2, kernel_size=3, groups=embedding_dim*2, padding='same'),
+                nn.ReLU(),
+                nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=1),
+            )
+
+
+        if self.use_module == 'both':
+            self.cls_attn = Attention(embedding_dim, num_heads, internal_dim)
+            self.norm = nn.LayerNorm(embedding_dim)
+            self.local_conv = nn.Sequential(
+                nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=3, padding='same'),
+                nn.ReLU(),
+                nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=3, padding='same'),
+            )
+
+    def forward(self, tokens: Tensor):
+        semantic_tokens = None
+
+        if self.use_module == 'transformer':
+            global_attn_keys = self.cls_attn(q=tokens, k=tokens, v=tokens)
+            semantic_tokens = self.norm(global_attn_keys)
+        
+        if self.use_module == 'conv':
+            b,l,c = tokens.shape
+            patch_size = int(math.sqrt(l))
+            token_in_conv = tokens.transpose(-1,-2).view(b, c, patch_size, patch_size)
+            local_conv_f = self.local_conv(token_in_conv)
+
+            semantic_tokens = local_conv_f.flatten(2).permute(0, 2, 1)
+
+        if self.use_module == 'both':
+            global_attn_keys = self.cls_attn(q=tokens, k=tokens, v=tokens)
+            transform_semantic_tokens = self.norm(global_attn_keys)
+
+            b,l,c = tokens.shape
+            patch_size = int(math.sqrt(l))
+            local_conv_f = self.local_conv(tokens.transpose(-1,-2).view(b, c, patch_size, patch_size))
+            conv_semantic_tokens = local_conv_f.flatten(2).permute(0, 2, 1)
+            
+            semantic_tokens = transform_semantic_tokens + conv_semantic_tokens
+
+        return semantic_tokens
+    
