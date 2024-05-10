@@ -26,6 +26,7 @@ parser.add_argument('--max_epochs', type=int,
                     default=12, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int,
                     default=16, help='batch_size per gpu')
+parser.add_argument('--train_sample_num', type=int, default=-1)
 parser.add_argument('--base_lr', type=float, default=0.001,
                     help='segmentation network learning rate')
 parser.add_argument('--img_size', type=int,
@@ -56,6 +57,8 @@ if __name__ == "__main__":
                 useModule = args.use_module
             ).to(device)
     model.train()
+    # pth_load_path = f'logs/cls_proposal/2024_04_24_21_46_14/checkpoints/epoch_6.pth'
+    # model.load_parameters(pth_load_path)
 
     if args.ema_start >= 0:
         ema_model = ExponentialMovingAverage(model, decay=0.2, device=device)
@@ -70,6 +73,7 @@ if __name__ == "__main__":
         mode = 'train',
         use_embed = True,
         # use_aug = args.use_aug
+        train_sample_num = args.train_sample_num
     )
     
     trainloader = DataLoader(
@@ -171,14 +175,15 @@ if __name__ == "__main__":
 
 '''
 python scripts/cls_proposal/train.py \
-    --max_epochs 12 \
+    --max_epochs 24 \
     --batch_size 16 \
-    --num_points 0 0 \
+    --num_points 1 0 \
     --base_lr 0.0001 \
     --use_module conv \
-    --dice_param 0.5
     --dataset_name whu \
-    --ema_start 1
+    --device cuda:1 \
+    --train_sample_num 400 \
+    --ema_start 1 \
     --device cuda:1
     --calc_sample_loss
     --use_aug
