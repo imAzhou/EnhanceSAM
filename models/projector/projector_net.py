@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from help_func.build_sam import sam_model_registry
+from models.sam.build_sam import sam_model_registry
 import numpy as np
 import cv2
 from models.sam.utils.amg import build_point_grid,batch_iterator
-from models.sam import Attention, MLPBlock
+from models.sam.modeling import Attention, MLPBlock
 
 
 class ProjectorNet(nn.Module):

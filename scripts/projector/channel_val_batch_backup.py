@@ -25,6 +25,8 @@ parser.add_argument('--n_per_side', type=int, default=32)
 parser.add_argument('--points_per_batch', type=int, default=64)
 parser.add_argument('--num_classes', type=int,
                     default=1, help='output channel of network')
+parser.add_argument('--num_points', type=int,
+                    default=3, help='output channel of network')
 parser.add_argument('--max_epochs', type=int,
                     default=1, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int,
@@ -38,50 +40,6 @@ parser.add_argument('--sam_ckpt', type=str, default='checkpoints_sam/sam_vit_h_4
 parser.add_argument('--device', type=str, default='cuda:0')
 parser.add_argument('--visual', action='store_true', help='If activated, the predict mask will be saved')
 args = parser.parse_args()
-
-def drwa_mask(image_name, img, gt, sam_seg, credible_p, credible_n, coords_torch):
-    '''
-    绘制四宫格，从上至下从左至右分别是：
-        整图GT，选点及sam分割的块，
-        可信前景区域，可信背景区域
-    Args:
-        img: np array, shape is (h,w,c)
-        gt, sam_seg, credible_p, credible_n: tensor, shape is (h,w), value is 0/1
-        coords_torch: (num_points, 2), 2 is (x,y)
-    '''
-    pred_save_dir = 'visual_result/projector'
-    os.makedirs(pred_save_dir, exist_ok=True)
-    labels_torch = torch.ones(len(coords_torch))
-
-    fig = plt.figure(figsize=(12,12))
-    ax = fig.add_subplot(221)
-    ax.imshow(img)
-    show_mask(gt.cpu(), ax)
-    show_points(coords_torch, labels_torch, ax)
-    ax.set_title('pred mask')
-
-    ax = fig.add_subplot(222)
-    ax.imshow(img)
-    show_mask(sam_seg.cpu(), ax)
-    show_points(coords_torch, labels_torch, ax)
-    ax.set_title('SAM seg')
-
-    ax = fig.add_subplot(223)
-    ax.imshow(img)
-    show_mask(credible_p.cpu(), ax)
-    show_points(coords_torch, labels_torch, ax)
-    ax.set_title('credible positive region')
-
-    ax = fig.add_subplot(224)
-    ax.imshow(img)
-    show_mask(credible_n.cpu(), ax)
-    show_points(coords_torch, labels_torch, ax)
-    ax.set_title('credible negative region')
-
-    plt.tight_layout()
-    
-    plt.savefig(f'{pred_save_dir}/07_{image_name}')
-    plt.close()
 
 if __name__ == "__main__":
     set_seed(args.seed)
@@ -118,38 +76,29 @@ if __name__ == "__main__":
     all_miou = []
     max_iou,max_epoch = 0,0
 
-    # for epoch_num in range(1, args.max_epochs):
-    for epoch_num in range(5,6):
+    for epoch_num in range(1, args.max_epochs):
+    # for epoch_num in range(4,5):
         pth_load_path = f'{record_save_dir}/checkpoints/epoch_{epoch_num}.pth'
         print(f'load pth from {pth_load_path}')
         model.load_parameters(pth_load_path)
-        all_data_precision_p,all_data_precision_n = 0., 0.
         for i_batch, sampled_batch in enumerate(tqdm(dataloader, ncols=70)):
             mask_256 = sampled_batch['mask_256'].to(device)
             gt_origin_masks = sampled_batch['mask_512']
-            mask_1024 = sampled_batch['mask_1024'].to(device)
             bs_image_embedding = sampled_batch['img_embed'].to(device)
             image_pe = model.prompt_encoder.get_dense_pe()
             all_segment_logits = []
 
-            nps = args.n_per_side
-            ps,pb = model.points_for_sam, model.points_per_batch
-            # nps*nps 个有效点
-            point_available = np.ones((nps*nps,), dtype=int)
-            single_img_precision_p,single_img_precision_n = 0., 0.
-            filter_times = 0
-            while np.sum(point_available) != 0:
-                points_new = []
-                indices, = np.nonzero(point_available)
-                if len(indices) >= pb:
-                    selected_idx = np.random.choice(indices, size=pb, replace=False)
-                else:
-                    selected_idx = indices
-                points_new = ps[selected_idx]
-                point_available[selected_idx] = 0
-
+            # point_mask = torch.ones((1024,1024), dtype=bool)
+            for (point_batch,) in batch_iterator(model.points_per_batch, model.points_for_sam):
+                # points_new = []
+                # for point_i in point_batch:
+                #     point_i = point_i.astype(int)
+                #     if not point_mask[point_i[1],point_i[0]]:
+                #         points_new.append(point_i)
+                # if len(points_new) == 0:
+                #     continue
                 with torch.no_grad():
-                    bs_coords_torch_every = torch.as_tensor(np.array(points_new), dtype=torch.float, device=device).unsqueeze(1)
+                    bs_coords_torch_every = torch.as_tensor(np.array(point_batch), dtype=torch.float, device=device).unsqueeze(1)
                     bs_labels_torch_every = torch.ones(bs_coords_torch_every.shape[:2], dtype=torch.int, device=device)
                     points_every = (bs_coords_torch_every, bs_labels_torch_every)
                     sparse_embeddings_every, dense_embeddings_every = model.prompt_encoder(
@@ -164,48 +113,20 @@ if __name__ == "__main__":
                         sparse_prompt_embeddings = sparse_embeddings_every,
                         dense_prompt_embeddings = dense_embeddings_every,
                     )
-                    sam_pred_mask_256 = low_res_logits_bs.flatten(0, 1) > 0
+                    pred_mask_256 = low_res_logits_bs.flatten(0, 1) > 0
                     batch_data = MaskData(
+                        logits = low_res_logits_bs.flatten(0, 1),    # shape: (points_per_batch, 256, 256)
+                        masks = pred_mask_256,
+                        iou_preds = iou_pred_bs.flatten(0, 1),  # shape: (points_per_batch,)
+                        seg_matched_gt = pred_mask_256 & mask_256,
                         embed_256 = embeddings_256_bs,  # shape: (points_per_batch, 32, 256, 256)
                         mask_token_out = mask_token_out_bs,  # shape: (points_per_batch, 1, 256)
+                        points = torch.as_tensor(point_batch.repeat(low_res_logits_bs.shape[1], axis=0)), # shape: (points_per_batch, 2)
                     )
 
-                    outputs = model.forward_batch_points(batch_data)
-                    all_segment_logits.append(outputs['keep_cls_logits'].detach())
-                    
-                    sam_pred_mask_1024 = F.interpolate(low_res_logits_bs, (1024, 1024), mode="bilinear", align_corners=False)
-                    sam_pred_mask_1024,_ = torch.max((sam_pred_mask_1024.detach() > 0).squeeze(1), dim = 0)
-                    logits_1024 = F.interpolate(outputs['keep_cls_logits'], (1024, 1024), mode="bilinear", align_corners=False).detach()
-                    pred_1024,_ = torch.max((F.sigmoid(logits_1024) > 0.5).squeeze(1), dim = 0)
-                    
-                    credible_p_mask = sam_pred_mask_1024 & pred_1024
-                    credible_n_mask = sam_pred_mask_1024 & (~pred_1024)
-                    filter_mask_1024 = torch.zeros_like(credible_p_mask, dtype=torch.float32).to(device)
-                    filter_mask_1024[credible_p_mask] = 1
-                    filter_mask_1024[credible_n_mask] = -1
-
-                    if torch.sum(torch.abs(filter_mask_1024)) > 0:
-                        # image_name = sampled_batch['meta_info']['img_name'][0]
-                        # img = sampled_batch['input_image'][0].permute(1,2,0).numpy()
-                        # drwa_mask(image_name, img, pred_1024, 
-                        #     sam_pred_mask_1024, filter_mask_1024>0, filter_mask_1024<0, bs_coords_torch_every.squeeze(1).cpu())
-
-                        pred_p, pred_n = torch.sum(filter_mask_1024>0), torch.sum(filter_mask_1024<0)
-                        whole_TP, whole_TN = torch.sum((filter_mask_1024>0) & mask_1024), torch.sum((filter_mask_1024<0) & (~mask_1024))
-                        precision_p = 1. if torch.sum(pred_p | whole_TP) == 0 else whole_TP / (pred_p + 1e-6)
-                        precision_n = whole_TN / pred_n
-
-                        single_img_precision_p += precision_p
-                        single_img_precision_n += precision_n
-                        filter_times += 1
-                        print(f'pred_p:{pred_p}, pred_n:{pred_n}, whole_TP:{whole_TP}, whole_TN:{whole_TN}, precision_p:{precision_p.item():.4f}, precision_n:{precision_n.item():.4f}')
-
-                        nonzero_inx, = np.nonzero(point_available)
-                        for idx in nonzero_inx:
-                            point_x,point_y = ps[idx].astype(int)
-                            if int(filter_mask_1024[point_y, point_x]) != 0:
-                                point_available[idx] = 0
-                        # print(f'filter point num: {len(nonzero_inx) - np.sum(point_available)}')
+                outputs = model.forward_batch_points(batch_data)
+                all_segment_logits.append(outputs['keep_cls_logits'].detach())
+            
             # all_segment_logits.shape: (n_per_side**2, 1, 256, 256 )
             all_segment_logits = torch.cat(all_segment_logits, dim = 0)
             pred_logits,_ = torch.max(all_segment_logits, dim=0)
@@ -220,20 +141,12 @@ if __name__ == "__main__":
             gt_origin_masks[gt_origin_masks == 0] = 255
             test_evaluator.process(pred_mask, gt_origin_masks)
 
-            all_data_precision_p += (single_img_precision_p / filter_times)
-            all_data_precision_n += (single_img_precision_n / filter_times)
-
         metrics = test_evaluator.evaluate(len(dataloader))
         print(f'epoch: {epoch_num} ' + str(metrics) + '\n')
         all_miou.append(metrics['mIoU'])
         if metrics['mIoU'] > max_iou:
             max_iou = metrics['mIoU']
             max_epoch = epoch_num
-        
-        metrics.update({
-            'precision_p': f'{(all_data_precision_p / len(dataloader)).item():.4f}',
-            'precision_n': f'{(all_data_precision_n / len(dataloader)).item():.4f}',
-        })
         all_metrics.append(f'epoch: {epoch_num}' + str(metrics) + '\n')
     # save result file
     config_file = os.path.join(record_save_dir, 'pred_result.txt')
@@ -243,7 +156,7 @@ if __name__ == "__main__":
         f.write(str(all_miou))
 
 '''
-python scripts/projector/channel_val_batch.py \
+python scripts/projector/channel_val_batch_backup.py \
     --dir_name 2024_05_14_13_45_24 \
     --n_per_side 64 \
     --points_per_batch 256 \
