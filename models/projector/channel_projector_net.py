@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from help_func.build_sam import sam_model_registry
+from models.sam.build_sam import sam_model_registry
 import numpy as np
 import cv2
 from models.sam.utils.amg import (
@@ -92,8 +92,6 @@ class ChannelProjectorNet(nn.Module):
 
         keep_token_out = sam_proposal_data['mask_token_out']
         keep_embed_256 = sam_proposal_data['embed_256']
-        keep_masks_256 = sam_proposal_data['masks']
-        keeped_seg_gt = sam_proposal_data['seg_matched_gt']
         
         hyper_in_cls = self.output_cls_mlps(keep_token_out)
         b,c,h,w = keep_embed_256.shape[0],32,256,256
@@ -101,9 +99,7 @@ class ChannelProjectorNet(nn.Module):
         keep_cls_logits = (hyper_in_cls @ keep_embed_256.view(b, c, h * w)).view(b, -1, h, w)
        
         outputs = {
-            'keeped_seg_gt': keeped_seg_gt,
             'keep_cls_logits': keep_cls_logits,
-            'keep_masks_256': keep_masks_256
         }
 
         return outputs
