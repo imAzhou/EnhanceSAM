@@ -1,6 +1,7 @@
 import os
 import cv2
 import torch
+import random
 import numpy as np
 from torch.utils.data import Dataset
 from torchvision.transforms import InterpolationMode
@@ -49,7 +50,9 @@ class BuildingDataset(Dataset):
 
         all_imgs = os.listdir(f'{data_root}/img_dir/{mode}')
         if train_sample_num > 0:
-            self.images = all_imgs[:train_sample_num]
+            if train_sample_num > len(all_imgs):
+                raise ValueError("sample nums cannot surpass total image nums!")
+            self.images = random.sample(all_imgs, train_sample_num)
         else:
             self.images = all_imgs
         

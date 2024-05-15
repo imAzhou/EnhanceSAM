@@ -66,7 +66,7 @@ class TwoWayTransformer(nn.Module):
         image_embedding: Tensor,
         image_pe: Tensor,
         point_embedding: Tensor,
-        inter_feat_c256: Tensor,
+        # inter_feat_c256: Tensor,
     ) -> Tuple[Tensor, Tensor]:
         """
         Args:
@@ -83,7 +83,7 @@ class TwoWayTransformer(nn.Module):
         """
         # BxCxHxW -> BxHWxC == B x N_image_tokens x C
         image_embedding = image_embedding.flatten(2).permute(0, 2, 1)
-        inter_feat_c256 = inter_feat_c256.flatten(2).permute(0, 2, 1)
+        # inter_feat_c256 = inter_feat_c256.flatten(2).permute(0, 2, 1)
         image_pe = image_pe.flatten(2).permute(0, 2, 1)
 
         # Prepare queries
@@ -99,7 +99,7 @@ class TwoWayTransformer(nn.Module):
                 query_pe=point_embedding,
                 key_pe=image_pe,
             )
-            keys += inter_feat_c256
+            # keys += inter_feat_c256
         
         # Apply the final attention layer from the points to the image
         q = queries + point_embedding

@@ -115,7 +115,7 @@ class ClsProposalNet(nn.Module):
             image_pe = image_pe,
             sparse_prompt_embeddings = sparse,
             dense_prompt_embeddings = dense,
-            inter_feature = inter_feature
+            # inter_feature = inter_feature
         )
         input_sam_size_masks = F.interpolate(
             low_res_masks,
