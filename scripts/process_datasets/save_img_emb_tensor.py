@@ -1,7 +1,7 @@
 import time
 import os
 import torch
-from help_func.build_sam import sam_model_registry
+from models.sam.build_sam import sam_model_registry
 from tqdm import tqdm
 from datasets.building_dataset import BuildingDataset
 # from datasets.semantic_seg.loveda import LoveDADataset
@@ -13,7 +13,7 @@ if __name__ == "__main__":
     device = torch.device('cuda:0')
     image_size = 1024
     batch_size = 1
-    dataset_name = 'WHU-Building'   # WHU-Building  InriaBuildingDataset
+    dataset_name = 'InriaBuildingDataset'   # WHU-Building  InriaBuildingDataset
     use_aug = False
     # register model
     sam = sam_model_registry['vit_h'](image_size = image_size,
@@ -21,14 +21,14 @@ if __name__ == "__main__":
                                     ).to(device)
     sam.eval()
 
-    # for mode in ['train','val']:
-    for mode in ['val']:
+    for mode in ['train','val']:
+    # for mode in ['val']:
         tail = 'aug_tensor' if use_aug else 'tensor'
-        tensor_save_dir = f'source/{dataset_name}/img_dir/{mode}_{tail}'
+        tensor_save_dir = f'/nfs/zly/datasets/{dataset_name}/img_dir/{mode}_{tail}'
         os.makedirs(tensor_save_dir, exist_ok=True)
         # load datasets
         val_dataset = BuildingDataset(
-            data_root = f'source/{dataset_name}',
+            data_root = f'/nfs/zly/datasets/{dataset_name}',
             mode = mode,
             use_aug = use_aug
         )

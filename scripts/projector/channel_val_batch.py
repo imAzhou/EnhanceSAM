@@ -192,13 +192,13 @@ if __name__ == "__main__":
 
                         pred_p, pred_n = torch.sum(filter_mask_1024>0), torch.sum(filter_mask_1024<0)
                         whole_TP, whole_TN = torch.sum((filter_mask_1024>0) & mask_1024), torch.sum((filter_mask_1024<0) & (~mask_1024))
-                        precision_p = 1. if torch.sum(pred_p | whole_TP) == 0 else whole_TP / (pred_p + 1e-6)
-                        precision_n = whole_TN / pred_n
+                        precision_p = 1. if torch.sum(pred_p | whole_TP) == 0 else (whole_TP / (pred_p + 1e-6)).item()
+                        precision_n = (whole_TN / pred_n).item()
 
                         single_img_precision_p += precision_p
                         single_img_precision_n += precision_n
                         filter_times += 1
-                        print(f'pred_p:{pred_p}, pred_n:{pred_n}, whole_TP:{whole_TP}, whole_TN:{whole_TN}, precision_p:{precision_p.item():.4f}, precision_n:{precision_n.item():.4f}')
+                        # print(f'\npred_p:{pred_p}, pred_n:{pred_n}, whole_TP:{whole_TP}, whole_TN:{whole_TN}, precision_p:{precision_p:.4f}, precision_n:{precision_n:.4f}')
 
                         nonzero_inx, = np.nonzero(point_available)
                         for idx in nonzero_inx:
@@ -231,8 +231,8 @@ if __name__ == "__main__":
             max_epoch = epoch_num
         
         metrics.update({
-            'precision_p': f'{(all_data_precision_p / len(dataloader)).item():.4f}',
-            'precision_n': f'{(all_data_precision_n / len(dataloader)).item():.4f}',
+            'precision_p': f'{(all_data_precision_p / len(dataloader)):.4f}',
+            'precision_n': f'{(all_data_precision_n / len(dataloader)):.4f}',
         })
         all_metrics.append(f'epoch: {epoch_num}' + str(metrics) + '\n')
     # save result file

@@ -104,7 +104,7 @@ class ImageEncoderViT(nn.Module):
             LayerNorm2d(out_chans),
         )
 
-    def forward(self, x: torch.Tensor, need_inter: False) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, need_inter: bool=False) -> torch.Tensor:
         x = self.patch_embed(x)
         if self.pos_embed is not None:
             x = x + self.pos_embed
