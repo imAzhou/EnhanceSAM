@@ -42,12 +42,17 @@ if __name__ == "__main__":
     model = ChannelProjectorNet(
         n_per_side = args.n_per_side,
         points_per_batch = args.points_per_batch,
+        sam_ckpt = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth'
     ).to(device)
     model.train()
     
+    # dataset_config = dict(
+    #     whu = '/nfs/zly/datasets/WHU-Building',
+    #     inria = '/nfs/zly/datasets/InriaBuildingDataset'
+    # )
     dataset_config = dict(
-        whu = '/nfs/zly/datasets/WHU-Building',
-        inria = '/nfs/zly/datasets/InriaBuildingDataset'
+        whu = '/x22201018/datasets/RemoteSensingDatasets/WHU-Building',
+        inria = '/x22201018/datasets/RemoteSensingDatasets/InriaBuildingDataset'
     )
     # load datasets
     train_dataset = BuildingDataset(

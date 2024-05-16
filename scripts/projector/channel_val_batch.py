@@ -92,12 +92,17 @@ if __name__ == "__main__":
     model = ChannelProjectorNet(
         n_per_side = args.n_per_side,
         points_per_batch = args.points_per_batch,
+        sam_ckpt = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth'
     ).to(device)
     model.eval()
     
+    # dataset_config = dict(
+    #     whu = '/nfs/zly/datasets/WHU-Building',
+    #     inria = 'datasets/InriaBuildingDataset'
+    # )
     dataset_config = dict(
-        whu = '/nfs/zly/datasets/WHU-Building',
-        inria = 'datasets/InriaBuildingDataset'
+        whu = '/x22201018/datasets/RemoteSensingDatasets/WHU-Building',
+        inria = '/x22201018/datasets/RemoteSensingDatasets/InriaBuildingDataset'
     )
     # load datasets
     dataset = BuildingDataset(
@@ -118,8 +123,8 @@ if __name__ == "__main__":
     all_miou = []
     max_iou,max_epoch = 0,0
 
-    # for epoch_num in range(1, args.max_epochs):
-    for epoch_num in range(5,6):
+    for epoch_num in range(1, args.max_epochs):
+    # for epoch_num in range(5,6):
         pth_load_path = f'{record_save_dir}/checkpoints/epoch_{epoch_num}.pth'
         print(f'load pth from {pth_load_path}')
         model.load_parameters(pth_load_path)
@@ -176,7 +181,7 @@ if __name__ == "__main__":
                     sam_pred_mask_1024 = F.interpolate(low_res_logits_bs, (1024, 1024), mode="bilinear", align_corners=False)
                     sam_pred_mask_1024,_ = torch.max((sam_pred_mask_1024.detach() > 0).squeeze(1), dim = 0)
                     logits_1024 = F.interpolate(outputs['keep_cls_logits'], (1024, 1024), mode="bilinear", align_corners=False).detach()
-                    pred_1024,_ = torch.max((F.sigmoid(logits_1024) > 0.5).squeeze(1), dim = 0)
+                    pred_1024,_ = torch.max((F.sigmoid(logits_1024) > 0.7).squeeze(1), dim = 0)
                     
                     credible_p_mask = sam_pred_mask_1024 & pred_1024
                     credible_n_mask = sam_pred_mask_1024 & (~pred_1024)
@@ -192,13 +197,13 @@ if __name__ == "__main__":
 
                         pred_p, pred_n = torch.sum(filter_mask_1024>0), torch.sum(filter_mask_1024<0)
                         whole_TP, whole_TN = torch.sum((filter_mask_1024>0) & mask_1024), torch.sum((filter_mask_1024<0) & (~mask_1024))
-                        precision_p = 1. if torch.sum(pred_p | whole_TP) == 0 else whole_TP / (pred_p + 1e-6)
-                        precision_n = whole_TN / pred_n
+                        precision_p = 1. if torch.sum(pred_p | whole_TP) == 0 else (whole_TP / (pred_p + 1e-6)).item()
+                        precision_n = (whole_TN / pred_n).item()
 
                         single_img_precision_p += precision_p
                         single_img_precision_n += precision_n
                         filter_times += 1
-                        print(f'pred_p:{pred_p}, pred_n:{pred_n}, whole_TP:{whole_TP}, whole_TN:{whole_TN}, precision_p:{precision_p.item():.4f}, precision_n:{precision_n.item():.4f}')
+                        # print(f'pred_p:{pred_p}, pred_n:{pred_n}, whole_TP:{whole_TP}, whole_TN:{whole_TN}, precision_p:{precision_p.item():.4f}, precision_n:{precision_n.item():.4f}')
 
                         nonzero_inx, = np.nonzero(point_available)
                         for idx in nonzero_inx:
@@ -224,17 +229,16 @@ if __name__ == "__main__":
             all_data_precision_n += (single_img_precision_n / filter_times)
 
         metrics = test_evaluator.evaluate(len(dataloader))
-        print(f'epoch: {epoch_num} ' + str(metrics) + '\n')
         all_miou.append(metrics['mIoU'])
         if metrics['mIoU'] > max_iou:
             max_iou = metrics['mIoU']
             max_epoch = epoch_num
-        
         metrics.update({
-            'precision_p': f'{(all_data_precision_p / len(dataloader)).item():.4f}',
-            'precision_n': f'{(all_data_precision_n / len(dataloader)).item():.4f}',
+            'precision_p': f'{(all_data_precision_p / len(dataloader)):.4f}',
+            'precision_n': f'{(all_data_precision_n / len(dataloader)):.4f}',
         })
         all_metrics.append(f'epoch: {epoch_num}' + str(metrics) + '\n')
+        print(f'epoch: {epoch_num} ' + str(metrics) + '\n')
     # save result file
     config_file = os.path.join(record_save_dir, 'pred_result.txt')
     with open(config_file, 'w') as f:
@@ -244,7 +248,7 @@ if __name__ == "__main__":
 
 '''
 python scripts/projector/channel_val_batch.py \
-    --dir_name 2024_05_14_13_45_24 \
+    --dir_name 2024_05_15_12_12_57 \
     --n_per_side 64 \
     --points_per_batch 256 \
     --max_epochs 9 \

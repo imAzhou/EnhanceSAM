@@ -50,12 +50,17 @@ if __name__ == "__main__":
     model = ChannelProjectorNet(
         n_per_side = args.n_per_side,
         points_per_batch = args.points_per_batch,
+        sam_ckpt = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth'
     ).to(device)
     model.eval()
     
+    # dataset_config = dict(
+    #     whu = '/nfs/zly/datasets/WHU-Building',
+    #     inria = 'datasets/InriaBuildingDataset'
+    # )
     dataset_config = dict(
-        whu = '/nfs/zly/datasets/WHU-Building',
-        inria = 'datasets/InriaBuildingDataset'
+        whu = '/x22201018/datasets/RemoteSensingDatasets/WHU-Building',
+        inria = '/x22201018/datasets/RemoteSensingDatasets/InriaBuildingDataset'
     )
     # load datasets
     dataset = BuildingDataset(
@@ -157,7 +162,7 @@ if __name__ == "__main__":
 
 '''
 python scripts/projector/channel_val_batch_backup.py \
-    --dir_name 2024_05_14_13_45_24 \
+    --dir_name 2024_05_15_12_12_57 \
     --n_per_side 64 \
     --points_per_batch 256 \
     --max_epochs 9 \
