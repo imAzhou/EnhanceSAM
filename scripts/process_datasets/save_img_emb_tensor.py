@@ -12,25 +12,27 @@ from utils import set_seed
 
 if __name__ == "__main__":
     set_seed(1234)
-    device = torch.device('cuda:1')
+    device = torch.device('cuda:0')
     image_size = 1024
     batch_size = 1
-    dataset_name = 'InriaBuildingDataset'   # WHU-Building  InriaBuildingDataset
+    data_root = '/x22201018/datasets/RemoteSensingDatasets'
+    dataset_name = 'WHU-Building'   # WHU-Building  InriaBuildingDataset
     use_aug = False
     # register model
     sam = sam_model_registry['vit_h'](image_size = image_size,
-                                        checkpoint = 'checkpoints_sam/sam_vit_h_4b8939.pth',
+                                        # checkpoint = 'checkpoints_sam/sam_vit_h_4b8939.pth',
+                                        checkpoint = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth',
                                     ).to(device)
     sam.eval()
 
     for mode in ['train','val']:
     # for mode in ['val']:
         tail = 'aug_tensor' if use_aug else 'tensor'
-        tensor_save_dir = f'/nfs/zly/datasets/{dataset_name}/img_dir/{mode}_{tail}'
+        tensor_save_dir = f'{data_root}/{dataset_name}/img_dir/{mode}_{tail}'
         os.makedirs(tensor_save_dir, exist_ok=True)
         # load datasets
         val_dataset = BuildingDataset(
-            data_root = f'/nfs/zly/datasets/{dataset_name}',
+            data_root = f'{data_root}/{dataset_name}',
             mode = mode,
             use_aug = use_aug
         )

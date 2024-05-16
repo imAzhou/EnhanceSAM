@@ -2,10 +2,12 @@ import os
 import torch
 import argparse
 from utils import set_seed, get_logger, get_train_strategy, cls_loss
-from models.cls_proposal import ClsProposalNet
+from models.projector import ChannelProjectorNet
 from tqdm import tqdm
 from datasets.gene_dataloader import gene_loader
 from utils.iou_metric import IoUMetric
+from models.sam.utils.amg import MaskData, batch_iterator
+import numpy as np
 
 parser = argparse.ArgumentParser()
 
@@ -24,8 +26,8 @@ parser.add_argument('--batch_size', type=int, default=16, help='batch_size per g
 parser.add_argument('--train_sample_num', type=int, default=-1)
 
 # about model
-parser.add_argument('--use_module', type=str)
-parser.add_argument('--num_classes', type=int, default=1, help='output channel of network')
+parser.add_argument('--n_per_side', type=int, default=32)
+parser.add_argument('--points_per_batch', type=int, default=64)
 
 # about train
 parser.add_argument('--loss_type', type=str)
@@ -37,29 +39,61 @@ parser.add_argument('--save_each_epoch', action='store_true')
 
 args = parser.parse_args()
 
-def train_one_epoch(model: ClsProposalNet, train_loader, optimizer):
+def train_one_epoch(model: ChannelProjectorNet, train_loader, optimizer):
     
     model.train()
     len_loader = len(train_loader)
     for i_batch, sampled_batch in enumerate(tqdm(train_loader, ncols=70)):
-        mask_1024 = sampled_batch['mask_1024'].to(device)
-        mask_512 = sampled_batch['mask_512'].to(device) # shape: [bs, 512, 512]
+        gt_mask_256 = sampled_batch['mask_256'].to(device)
         if args.use_embed:
             bs_input = sampled_batch['img_embed'].to(device)
         else:
             bs_input = sampled_batch['input_image'].to(device)
-        
-        outputs = model(bs_input, mask_1024)
-        pred_logits = outputs['pred_mask_512']  # shape: [bs, num_classes, 512, 512]
-        loss = cls_loss(pred_logits=pred_logits, target_masks=mask_512, args=args)
-        
+        image_pe = model.prompt_encoder.get_dense_pe()
+        cache_batch_data = MaskData()
+        ps,pb = model.points_for_sam, model.points_per_batch
+        for (batch_idx, (point_batch,)) in enumerate(batch_iterator(pb, ps)):
+            with torch.no_grad():
+                bs_coords_torch_every = torch.as_tensor(np.array(point_batch), dtype=torch.float, device=device).unsqueeze(1)
+                bs_labels_torch_every = torch.ones(bs_coords_torch_every.shape[:2], dtype=torch.int, device=device)
+                points_every = (bs_coords_torch_every, bs_labels_torch_every)
+                sparse_embeddings_every, dense_embeddings_every = model.prompt_encoder(
+                    points=points_every,
+                    boxes=None,
+                    masks=None,
+                )
+                # low_res_logits_every.shape: (points_per_batch, 1, 256, 256)
+                # iou_pred_every.shape: (points_per_batch, 1)
+                # embeddings_256_every.shape: (points_per_batch, 32, 256, 256)
+                # mask_token_out_bs.shape: (points_per_batch, 1, 256)
+                low_res_logits_bs, iou_pred_bs, embeddings_64_bs, embeddings_256_bs, mask_token_out_bs = model.mask_decoder(
+                    image_embeddings = bs_input,
+                    image_pe = image_pe,
+                    sparse_prompt_embeddings = sparse_embeddings_every,
+                    dense_prompt_embeddings = dense_embeddings_every,
+                )
+                sam_pred_mask_256 = low_res_logits_bs.flatten(0, 1) > 0
+                batch_data = MaskData(
+                    embed_256 = embeddings_256_bs,  # shape: (points_per_batch, 32, 256, 256)
+                    mask_token_out = mask_token_out_bs,  # shape: (points_per_batch, 1, 256)
+                )
+
+                cache_batch_data.cat(batch_data)
+                del batch_data
+
+            outputs = model.forward_batch_points(cache_batch_data)
+
+            pred_logits = outputs['keep_cls_logits']    # shape: (points_per_batch, 1, 256, 256)
+            seg_gt = sam_pred_mask_256 & gt_mask_256   # shape: (points_per_batch, 256, 256)
+            
+        loss = cls_loss(pred_logits=pred_logits, target_masks=seg_gt, args=args)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        
         logger.info(f'iteration {i_batch}/{len_loader}: loss: {loss.item():.6f}')
+        cache_batch_data = MaskData()
 
-def val_one_epoch(model: ClsProposalNet, val_loader):
+def val_one_epoch(model: ChannelProjectorNet, val_loader):
     
     model.eval()
     for i_batch, sampled_batch in enumerate(tqdm(val_loader, ncols=70)):
@@ -80,14 +114,14 @@ def val_one_epoch(model: ClsProposalNet, val_loader):
 if __name__ == "__main__":
     set_seed(args.seed)
     device = torch.device(args.device)
-    record_save_dir = 'logs/cls_proposal'
+    record_save_dir = 'logs/auto_seg'
     
     # register model
-    model = ClsProposalNet(
-                num_classes = args.num_classes,
-                useModule = args.use_module,
-                sam_ckpt = args.sam_ckpt
-            ).to(device)
+    model = ChannelProjectorNet(
+        n_per_side = args.n_per_side,
+        points_per_batch = args.points_per_batch,
+        sam_ckpt = args.sam_ckpt
+    ).to(device)
     # data loader
     train_loader,val_dataloader,metainfo = gene_loader(
         data_tag = args.dataset_name,
@@ -140,7 +174,7 @@ if __name__ == "__main__":
 
 '''
 python scripts/cls_proposal/main.py \
-    --max_epochs 24 \
+    --max_epochs 3 \
     --sam_ckpt /x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth \
     --dataset_name whu \
     --use_embed \
