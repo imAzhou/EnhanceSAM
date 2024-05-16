@@ -22,7 +22,8 @@ class ChannelProjectorNet(nn.Module):
     def __init__(self, n_per_side = 32, points_per_batch = 64,
                  mpoints = 2,
                  box_nms_thresh: float = 0.7,
-                 sam_ckpt = 'checkpoints_sam/sam_vit_h_4b8939.pth'):
+                 sam_ckpt = 'checkpoints_sam/sam_vit_h_4b8939.pth'
+            ):
         super(ChannelProjectorNet, self).__init__()
         self.mpoints = mpoints
         self.box_nms_thresh = box_nms_thresh
