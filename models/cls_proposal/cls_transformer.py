@@ -265,28 +265,37 @@ class SemanticModule(nn.Module):
         super().__init__()
         self.use_module = use_module
         internal_dim = embedding_dim*2
+        self.depth = 2
+
         if self.use_module == 'transformer':
-            self.cls_attn = Attention(embedding_dim, num_heads, internal_dim)
-            self.norm = nn.LayerNorm(embedding_dim)
-        if self.use_module == 'conv':
-            # self.local_conv = nn.Sequential(
-            #     nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=3, padding='same'),
-            #     nn.ReLU(),
-            #     nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=3, padding='same'),
-            # )
-            self.local_conv = nn.Sequential(
-                nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=1),
-                nn.Conv2d(embedding_dim*2, embedding_dim*2, kernel_size=3, groups=embedding_dim*2, padding='same'),
+            self.downsample = nn.Sequential(
+                nn.Conv2d(embedding_dim, internal_dim, kernel_size=1),
                 nn.ReLU(),
-                nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=1),
-                # nn.BatchNorm2d(embedding_dim),
-                nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=1),
-                nn.Conv2d(embedding_dim*2, embedding_dim*2, kernel_size=3, groups=embedding_dim*2, padding='same'),
-                nn.ReLU(),
-                nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=1),
+                nn.Conv2d(internal_dim, internal_dim, kernel_size=3, groups=internal_dim, stride=2, padding=1)
             )
-
-
+            self.cls_attn = Attention(internal_dim, num_heads, internal_dim*2)
+            self.norm = nn.LayerNorm(internal_dim)
+            self.upsample = nn.Sequential(
+                nn.ConvTranspose2d(internal_dim, embedding_dim, kernel_size=2, stride=2),
+                nn.GELU(),
+            )
+        
+        if self.use_module == 'conv':
+            self.local_conv = nn.Sequential(
+                nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=3, padding='same'),
+                nn.ReLU(),
+                nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=3, padding='same'),
+            )
+            # self.local_conv = nn.ModuleList()
+            # for i in range(self.depth):
+            #     block = nn.Sequential(
+            #         nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=1),
+            #         nn.Conv2d(embedding_dim*2, embedding_dim*2, kernel_size=3, groups=embedding_dim*2, padding='same'),
+            #         nn.ReLU(),
+            #         nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=1),
+            #     )
+            #     self.local_conv.append(block)
+            
         if self.use_module == 'both':
             self.cls_attn = Attention(embedding_dim, num_heads, internal_dim)
             self.norm = nn.LayerNorm(embedding_dim)
@@ -300,15 +309,26 @@ class SemanticModule(nn.Module):
         semantic_tokens = None
 
         if self.use_module == 'transformer':
-            global_attn_keys = self.cls_attn(q=tokens, k=tokens, v=tokens)
-            semantic_tokens = self.norm(global_attn_keys)
+            b,l,c = tokens.shape
+            patch_size = int(math.sqrt(l))
+            token_in_conv = tokens.transpose(-1,-2).view(b, c, patch_size, patch_size)
+            token_downsample = self.downsample(token_in_conv)
+            _,down_patch_c, down_patch_size,_ = token_downsample.shape
+            token_downsample = token_downsample.flatten(2).permute(0, 2, 1)
+            global_attn_keys = self.cls_attn(q=token_downsample, k=token_downsample, v=token_downsample)
+            global_attn_keys = self.norm(global_attn_keys)
+            token_after_attn = global_attn_keys.transpose(-1,-2).view(b, down_patch_c, down_patch_size, down_patch_size)
+            upsample_token = self.upsample(token_after_attn)
+            semantic_tokens = upsample_token.flatten(2).permute(0, 2, 1)
         
         if self.use_module == 'conv':
             b,l,c = tokens.shape
             patch_size = int(math.sqrt(l))
-            token_in_conv = tokens.transpose(-1,-2).view(b, c, patch_size, patch_size)
-            local_conv_f = self.local_conv(token_in_conv)
-
+            local_conv_f = self.local_conv(tokens.transpose(-1,-2).view(b, c, patch_size, patch_size))
+            # local_conv_f = tokens.transpose(-1,-2).view(b, c, patch_size, patch_size)
+            # for block in self.local_conv:
+            #     local_conv_f = block(local_conv_f)
+            
             semantic_tokens = local_conv_f.flatten(2).permute(0, 2, 1)
 
         if self.use_module == 'both':

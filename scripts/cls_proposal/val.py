@@ -108,16 +108,16 @@ if __name__ == "__main__":
 
 '''
 python scripts/cls_proposal/val.py \
-    --dir_name 2024_05_09_23_07_34 \
+    --dir_name 2024_05_15_17_12_28 \
     --batch_size 1 \
     --num_points 1 0 \
-    --max_epochs 6 \
+    --max_epochs 24 \
     --use_module conv \
     --dataset_name whu \
     --device cuda:1 \
 
 python scripts/cls_proposal/val.py \
-    --dir_name 2024_05_09_10_24_06 \
+    --dir_name sota_whu \
     --batch_size 1 \
     --num_points 1 0 \
     --specify_epoch 6 \

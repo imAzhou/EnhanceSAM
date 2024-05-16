@@ -112,19 +112,22 @@ def gene_point_embed(model,image_mask, point_num,device):
     )
     return sparse_embeddings,points
 
-def gene_max_area_center_point(image_mask_np):
+def gene_max_area_box(image_mask_np):
     '''
     Args:
         image_mask_np(numpy): The image masks. Expects an
             image in HW uint8 format, with pixel values in [0, 1].
     return:
-        center_point_x, center_point_y
+        [centroid_x,centroid_y], [x1,y1,x2,y2]
     '''
     # 寻找连通域
     _, labels, stats, centroids = cv2.connectedComponentsWithStats(image_mask_np, connectivity=8)
     # 找到最大连通域的索引
     max_area_index = np.argmax(stats[1:, cv2.CC_STAT_AREA]) + 1  # +1 to exclude background label
     
+    # 获取最大连通域的包围盒坐标（左上角，右下角）
+    x1,y1,w,h,_ = stats[max_area_index]
+    x2,y2 = x1 + w, y1 + h
     # 获取最大连通域的中点位置（直接取中心位置有可能取在背景上：环状前景）
     [centroid_x,centroid_y] = centroids[max_area_index]
     centroid_x,centroid_y = int(centroid_x),int(centroid_y)
@@ -134,4 +137,4 @@ def gene_max_area_center_point(image_mask_np):
         random_pos_index = np.random.choice(np.arange(positive_coords[0].shape[0]), size=1)
         centroid_y,centroid_x = positive_coords[0][random_pos_index],positive_coords[1][random_pos_index]
         centroid_y,centroid_x = centroid_y[0],centroid_x[0]
-    return centroid_x,centroid_y
+    return [centroid_x,centroid_y], [x1,y1,x2,y2]

@@ -5,7 +5,8 @@ from models.sam.build_sam import sam_model_registry
 from .mask_decoder import MaskDecoder
 from .cls_transformer import TwoWayTransformer
 import torch.nn.functional as F
-
+from utils.tools import gene_max_area_box
+import numpy as np
 
 class ClsProposalNet(nn.Module):
 
@@ -89,28 +90,49 @@ class ClsProposalNet(nn.Module):
         print(self.mask_decoder.load_state_dict(state_dict['mask_decoder'], strict = False))
         print('='*59)
 
+    def _gene_sparse_embed(self, mask_np, device):
+        points,boxes = None, None
+        center_point,bbox = None, None
+        if np.sum(mask_np) > 0:
+            center_point,bbox = gene_max_area_box(mask_np)
+            coords_torch = torch.as_tensor(np.array([center_point]), dtype=torch.float, device=device)
+            labels_torch = torch.ones(len(coords_torch), dtype=torch.int, device=device)
+            coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
+            points = (coords_torch, labels_torch)
+
+            box_np = np.array(bbox)
+            box_torch = torch.as_tensor(box_np[None, :], dtype=torch.float, device=device)
+            boxes = box_torch[None, :]
+
+        sparse_embeddings, _ = self.prompt_encoder(
+            points = points,
+            boxes = boxes,
+            masks = None,
+        )
+        return sparse_embeddings, (center_point,bbox)
+
     def forward(self, bs_image_embedding: torch.Tensor, label_mask: torch.Tensor):
         device = bs_image_embedding.device
-        bs_points_coord = []
+        bs_point_box = []
 
         bs_sparse_embedding = []
         for single_label in label_mask:
-            sparse_embedding,single_img_points = gene_point_embed(self, single_label.cpu(), self.num_points, device)
-            
-            # sparse_embedding,_ = gene_center_p_random_n_embed(self, label_mask.cpu())
-            # there is no positive point
+            # sparse_embedding,single_img_points = gene_point_embed(self, single_label.cpu(), self.num_points, device)
+            sparse_embedding, (point,box) = self._gene_sparse_embed(single_label.cpu().numpy(),device)
+            # there is no positive region
             if sparse_embedding.shape[1] == 0:
-                points_coord = torch.ones((1, sum(self.num_points), 2), device=device) * -1
                 sparse_embedding = self.prompt_encoder.not_a_point_embed.weight.unsqueeze(0)
                 # when prompt box is none, prompt encoder will concat more point embedding
-                sparse_embedding = torch.repeat_interleave(sparse_embedding, sum(self.num_points)+1, dim=1)
-            else:
-                points_coord, points_label = single_img_points
-
+                sparse_embedding = torch.repeat_interleave(sparse_embedding, 3, dim=1)
+            
+            bs_point_box.append({
+                'point': point,
+                'box': box,
+            })
             bs_sparse_embedding.append(sparse_embedding)
-            bs_points_coord.append(points_coord)
+            
         bs_sparse_embedding = torch.cat(bs_sparse_embedding, dim=0)
-        bs_points_coord = torch.cat(bs_points_coord, dim=0)
+        
         b,c,h,w = bs_image_embedding.shape
         p = self.prompt_encoder
         dense_embeddings = p.no_mask_embed.weight.reshape(1, -1, 1, 1).expand(
@@ -133,8 +155,7 @@ class ClsProposalNet(nn.Module):
         outputs = {
             'pred_mask_512': low_res_masks,
             'pred_mask_1024': input_sam_size_masks,
-            'points': bs_points_coord,
-            # 'attn_token_to_image': attn_token_to_image
+            'bs_point_box': bs_point_box
         }
 
         return outputs

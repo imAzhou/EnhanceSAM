@@ -160,7 +160,7 @@ if __name__ == "__main__":
 
             iter_num = iter_num + 1
 
-            logger.info(f'iteration {iter_num%max_iterations}/{max_iterations} : bce_loss : {bce_loss.item():.6f}, dice_loss : {dice_loss.item():.6f}, loss : {loss.item():.6f},  lr: {lr_:.6f}')
+            logger.info(f'iter {iter_num%max_iterations}/{max_iterations}: bce_loss: {bce_loss.item():.6f}, dice_loss: {dice_loss.item():.6f}, loss: {loss.item():.6f},  lr: {lr_:.6f}')
         
         save_mode_path = os.path.join(pth_save_dir, 'epoch_' + str(epoch_num) + '.pth')
         if args.ema_start >=0 and epoch_num >= args.ema_start:
@@ -178,11 +178,12 @@ python scripts/cls_proposal/train.py \
     --max_epochs 24 \
     --batch_size 16 \
     --num_points 1 0 \
-    --base_lr 0.0001 \
+    --base_lr 0.00005 \
     --use_module conv \
-    --dataset_name whu \
+    --dataset_name inria \
     --device cuda:1 \
     --train_sample_num 400 \
+    --calc_sample_loss
     --ema_start 1 \
     --device cuda:1
     --calc_sample_loss
