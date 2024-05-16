@@ -41,25 +41,10 @@ class ClsProposalNet(nn.Module):
             'cls_tokens', 
             'cls_mlps',
             'process_inter_feat',
-            'upscaling_inter_feat'
+            'upscaling_inter_feat',
+            'transformer.layers.0.semantic_module',
+            'transformer.layers.1.semantic_module',
         ]
-        if useModule == 'transformer':
-            self.except_keys.extend([
-                'transformer.layers.0.global_self_attn',
-                'transformer.layers.1.global_self_attn',
-            ])
-        if useModule == 'conv':
-            self.except_keys.extend([
-                'transformer.layers.0.local_conv',
-                'transformer.layers.1.local_conv',
-            ])
-        if useModule == 'both':
-            self.except_keys.extend([
-                'transformer.layers.0.global_self_attn',
-                'transformer.layers.1.global_self_attn',
-                'transformer.layers.0.local_conv',
-                'transformer.layers.1.local_conv',
-            ])
 
         self.load_sam_parameters(sam.mask_decoder.state_dict())
         self.freeze_parameters()
@@ -130,7 +115,7 @@ class ClsProposalNet(nn.Module):
             image_pe = image_pe,
             sparse_prompt_embeddings = sparse,
             dense_prompt_embeddings = dense,
-            inter_feature = inter_feature
+            # inter_feature = inter_feature
         )
         input_sam_size_masks = F.interpolate(
             low_res_masks,

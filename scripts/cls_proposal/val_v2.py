@@ -20,6 +20,7 @@ parser.add_argument('--num_classes', type=int,
 parser.add_argument('--num_points', nargs='+', type=int)
 parser.add_argument('--max_epochs', type=int,
                     default=1, help='maximum epoch number to train')
+parser.add_argument('--specify_epoch', type=int)
 parser.add_argument('--batch_size', type=int,
                     default=1, help='batch_size per gpu')
 parser.add_argument('--img_size', type=int,
@@ -62,13 +63,8 @@ if __name__ == "__main__":
     
     test_evaluator = IoUMetric(iou_metrics=['mIoU'])
     test_evaluator.dataset_meta = dataset.METAINFO
-    
-    all_metrics = []
-    all_miou = []
-    max_iou,max_epoch = 0,0
-    for epoch_num in range(args.max_epochs):
-    # for epoch_num in range(14,15):
-        pth_load_path = f'{record_save_dir}/checkpoints/epoch_{epoch_num}.pth'
+
+    def eval_epoch(pth_load_path):
         model.load_parameters(pth_load_path)
         for i_batch, sampled_batch in enumerate(tqdm(dataloader, ncols=70)):
             mask_1024 = sampled_batch['mask_1024'].to(device)
@@ -84,25 +80,48 @@ if __name__ == "__main__":
             test_evaluator.process(pred_mask, gt_origin_masks)
 
         metrics = test_evaluator.evaluate(len(dataloader))
-        print(f'epoch: {epoch_num} ' + str(metrics) + '\n')
-        all_miou.append(metrics['mIoU'])
-        if metrics['mIoU'] > max_iou:
-            max_iou = metrics['mIoU']
-            max_epoch = epoch_num
-        all_metrics.append(f'epoch: {epoch_num}' + str(metrics) + '\n')
-    # save result file
-    config_file = os.path.join(record_save_dir, 'pred_result.txt')
-    with open(config_file, 'w') as f:
-        f.writelines(all_metrics)
-        f.write(f'\nmax_iou: {max_iou}, max_epoch: {max_epoch}\n')
-        f.write(str(all_miou))
+        return metrics
+    
+    if args.specify_epoch is not None:
+        pth_load_path = f'{record_save_dir}/checkpoints/epoch_{args.specify_epoch}.pth'
+        metrics = eval_epoch(pth_load_path)
+        print(f'epoch: {args.specify_epoch} ' + str(metrics) + '\n')
+    else:
+        all_metrics = []
+        all_miou = []
+        max_iou,max_epoch = 0,0
+        for epoch_num in range(args.max_epochs):
+            pth_load_path = f'{record_save_dir}/checkpoints/epoch_{epoch_num}.pth'
+            metrics = eval_epoch(pth_load_path)
+            print(f'epoch: {epoch_num} ' + str(metrics) + '\n')
+            all_miou.append(metrics['mIoU'])
+            if metrics['mIoU'] > max_iou:
+                max_iou = metrics['mIoU']
+                max_epoch = epoch_num
+            all_metrics.append(f'epoch: {epoch_num}' + str(metrics) + '\n')
+        # save result file
+        config_file = os.path.join(record_save_dir, 'pred_result.txt')
+        with open(config_file, 'w') as f:
+            f.writelines(all_metrics)
+            f.write(f'\nmax_iou: {max_iou}, max_epoch: {max_epoch}\n')
+            f.write(str(all_miou))
 
 '''
 python scripts/cls_proposal/val_v2.py \
-    --dir_name 2024_05_06_08_00_33 \
+    --dir_name 2024_05_15_01_50_26 \
     --batch_size 1 \
     --num_points 1 0 \
-    --max_epochs 24 \
+    --max_epochs 12 \
+    --use_module conv \
+    --dataset_name inria
+    --device cuda:1 \
+
+        
+python scripts/cls_proposal/val_v2.py \
+    --dir_name sota-whu \
+    --batch_size 1 \
+    --num_points 1 0 \
+    --specify_epoch 15 \
     --use_module conv \
     --dataset_name whu
     --device cuda:1 \

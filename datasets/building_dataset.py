@@ -1,13 +1,13 @@
 import os
 import cv2
 import torch
+import random
 import numpy as np
 from torch.utils.data import Dataset
 from torchvision.transforms import InterpolationMode
 from utils import ResizeLongestSide
 from .augment import Pad, RandomFlip, PhotoMetricDistortion
 import torchvision.transforms as T
-from torchvision.utils import make_grid
 
 
 class BuildingDataset(Dataset):
@@ -49,11 +49,12 @@ class BuildingDataset(Dataset):
 
         all_imgs = os.listdir(f'{data_root}/img_dir/{mode}')
         if train_sample_num > 0:
-            self.images = all_imgs[:train_sample_num]
+            if train_sample_num > len(all_imgs):
+                raise ValueError("sample nums cannot surpass total image nums!")
+            self.images = random.sample(all_imgs, train_sample_num)
         else:
             self.images = all_imgs
         
-   
     def __getitem__(self, index):
         filename = self.images[index].strip()
         img_name = filename.split('.')[0]
@@ -165,31 +166,3 @@ class BuildingDataset(Dataset):
         plt.axis('off')
         plt.tight_layout()
         plt.savefig('img_and_mask_origin.png')
-
-    def gene_aug_data_cat(self, image: np.ndarray, image_mask: np.ndarray):
-        '''
-        Args:
-            - image: ndarry, shape is (h,w,c)
-            - image_mask: ndarray, shape is (h,w)
-        Return:
-            - aug_img: tensor, shape is (c, 1024, 1024)
-            - aug_gt: tensor, shape is (1024, 1024)
-        '''
-        image = torch.as_tensor(image).permute(2, 0, 1).contiguous()
-        image_mask = torch.as_tensor(image_mask).unsqueeze(0)
-        concat_pair = torch.cat([image, image_mask], dim=0)
-
-        common_transform = T.Compose([
-            T.Resize((512, 512)),  # 缩放到指定大小
-            Pad()
-        ])
-        origin_pair = common_transform(concat_pair).unsqueeze(0)
-        flip_img = RandomFlip()(origin_pair)
-        rotate_img = T.RandomAffine(degrees=45)(origin_pair)
-        scale_img = T.RandomResizedCrop((512, 512), scale=(0.6, 1.4))(origin_pair)
-        cat_imgs = torch.cat([origin_pair, flip_img, rotate_img, scale_img], dim=0)
-        grid_image = make_grid(cat_imgs, nrow=2, padding=0)
-
-        aug_img,aug_gt = grid_image[:3],grid_image[3:].squeeze(0)
-
-        return aug_img,aug_gt

@@ -153,7 +153,7 @@ if __name__ == "__main__":
 
             iter_num = iter_num + 1
 
-            logger.info(f'iteration {iter_num%max_iterations}/{max_iterations} : bce_loss : {bce_loss.item():.6f}, dice_loss : {dice_loss.item():.6f}, loss : {loss.item():.6f},  lr: {lr_:.6f}')
+            logger.info(f'iteration {iter_num%max_iterations}/{max_iterations}: bce_loss: {bce_loss.item():.6f}, dice_loss: {dice_loss.item():.6f}, loss: {loss.item():.6f},  lr: {lr_:.6f}')
 
         save_mode_path = os.path.join(pth_save_dir, 'epoch_' + str(epoch_num) + '.pth')
         model.save_parameters(save_mode_path)
@@ -161,14 +161,14 @@ if __name__ == "__main__":
 
 '''
 python scripts/cls_proposal/train_v2.py \
-    --max_epochs 24 \
+    --max_epochs 12 \
     --batch_size 16 \
     --num_points 1 0 \
     --base_lr 0.0001 \
     --use_module conv \
-    --dataset_name whu \
+    --dataset_name inria \
     --calc_sample_loss \
+    --train_sample_num 900 \
     --use_aug \
-    --train_sample_num 400
     --debug_mode
 '''

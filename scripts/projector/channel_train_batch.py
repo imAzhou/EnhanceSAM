@@ -3,7 +3,7 @@ import os
 import torch
 import argparse
 import torch.optim as optim
-from help_func.tools import set_seed,get_parameter_number
+from utils import set_seed,get_parameter_number
 from torch.nn import functional as F
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
 from models.projector import ChannelProjectorNet
@@ -27,6 +27,7 @@ parser.add_argument('--seed', type=int, default=1234 )
 parser.add_argument('--dice_param', type=float, default=0.8)
 parser.add_argument('--weight_decay', type=float, default=0.001)
 parser.add_argument('--device', type=str, default='cuda:0')
+parser.add_argument('--train_sample_num', type=int, default=-1)
 # parser.add_argument('--filter_points', action='store_true')
 parser.add_argument('--calc_sample_loss', action='store_true')
 parser.add_argument('--debug_mode', action='store_true', help='If activated, log dirname prefis is debug')
@@ -41,18 +42,24 @@ if __name__ == "__main__":
     model = ChannelProjectorNet(
         n_per_side = args.n_per_side,
         points_per_batch = args.points_per_batch,
+        sam_ckpt = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth'
     ).to(device)
     model.train()
     
+    # dataset_config = dict(
+    #     whu = '/nfs/zly/datasets/WHU-Building',
+    #     inria = '/nfs/zly/datasets/InriaBuildingDataset'
+    # )
     dataset_config = dict(
-        whu = 'datasets/WHU-Building',
-        inria = 'datasets/InriaBuildingDataset'
+        whu = '/x22201018/datasets/RemoteSensingDatasets/WHU-Building',
+        inria = '/x22201018/datasets/RemoteSensingDatasets/InriaBuildingDataset'
     )
     # load datasets
     train_dataset = BuildingDataset(
         data_root = dataset_config[args.dataset_name],
         mode = 'train',
-        use_embed = True
+        use_embed = True,
+        train_sample_num = args.train_sample_num
     )
     
     trainloader = DataLoader(
@@ -97,26 +104,15 @@ if __name__ == "__main__":
     max_iterations = (len(model.points_for_sam) // model.points_per_batch) * len(trainloader)
     iter_num = 0
     for i_batch, sampled_batch in enumerate(tqdm(trainloader, ncols=50)):
-        mask_256 = sampled_batch['mask_256'].to(device)
-        
+        gt_mask_256 = sampled_batch['mask_256'].to(device)
         bs_image_embedding = sampled_batch['img_embed'].to(device)
         image_pe = model.prompt_encoder.get_dense_pe()
-        point_mask = torch.zeros((1024,1024), dtype=bool)
-        cache_batch_data = MaskData()
         
+        cache_batch_data = MaskData()
         ps,pb = model.points_for_sam, model.points_per_batch
-        total_batches_cnt = len(ps) // pb + int(len(ps) % pb != 0)
         for (batch_idx, (point_batch,)) in enumerate(batch_iterator(pb, ps)):
-            points_new = []
-            for point_i in point_batch:
-                point_i = point_i.astype(int)
-                if not point_mask[point_i[1],point_i[0]]:
-                    points_new.append(point_i)
-            if len(points_new) == 0:
-                continue
-
             with torch.no_grad():
-                bs_coords_torch_every = torch.as_tensor(np.array(points_new), dtype=torch.float, device=device).unsqueeze(1)
+                bs_coords_torch_every = torch.as_tensor(np.array(point_batch), dtype=torch.float, device=device).unsqueeze(1)
                 bs_labels_torch_every = torch.ones(bs_coords_torch_every.shape[:2], dtype=torch.int, device=device)
                 points_every = (bs_coords_torch_every, bs_labels_torch_every)
                 sparse_embeddings_every, dense_embeddings_every = model.prompt_encoder(
@@ -134,34 +130,19 @@ if __name__ == "__main__":
                     sparse_prompt_embeddings = sparse_embeddings_every,
                     dense_prompt_embeddings = dense_embeddings_every,
                 )
-                pred_mask_256 = low_res_logits_bs.flatten(0, 1) > 0
+                sam_pred_mask_256 = low_res_logits_bs.flatten(0, 1) > 0
                 batch_data = MaskData(
-                    logits = low_res_logits_bs.flatten(0, 1),    # shape: (points_per_batch, 256, 256)
-                    masks = pred_mask_256,
-                    iou_preds = iou_pred_bs.flatten(0, 1),  # shape: (points_per_batch,)
-                    seg_matched_gt = pred_mask_256 & mask_256,
                     embed_256 = embeddings_256_bs,  # shape: (points_per_batch, 32, 256, 256)
                     mask_token_out = mask_token_out_bs,  # shape: (points_per_batch, 1, 256)
-                    points = torch.as_tensor(point_batch.repeat(low_res_logits_bs.shape[1], axis=0)), # shape: (points_per_batch, 2)
                 )
 
                 cache_batch_data.cat(batch_data)
                 del batch_data
 
-                for mask_i in pred_mask_256.cpu().float():
-                    mask_i = mask_i.unsqueeze(0).unsqueeze(0)
-                    mask_i_1024 = F.interpolate(mask_i,
-                        size=(1024,1024), mode='nearest').squeeze(0).squeeze(0)
-                    point_mask = torch.logical_or(mask_i_1024, point_mask)
-
-            
-            if cache_batch_data['logits'].shape[0] < pb and batch_idx != total_batches_cnt-1:
-                continue
-
             outputs = model.forward_batch_points(cache_batch_data)
 
-            pred_logits = outputs['keep_cls_logits']    # shape: (keep_by_nms, 1, 256, 256)
-            seg_gt = outputs['keeped_seg_gt']   # shape: (keep_by_nms, 256, 256)
+            pred_logits = outputs['keep_cls_logits']    # shape: (points_per_batch, 1, 256, 256)
+            seg_gt = sam_pred_mask_256 & gt_mask_256   # shape: (points_per_batch, 256, 256)
 
             if args.calc_sample_loss:
                 bce_loss, dice_loss = loss_masks(pred_logits, seg_gt.unsqueeze(1).float())
@@ -188,10 +169,10 @@ if __name__ == "__main__":
             cache_batch_data = MaskData()
 
         logger.info(
-            f'bce_loss : {bce_loss:.6f}, dice_loss : {dice_loss:.6f}, loss : {loss.item():.6f},  lr: {lr_:.6f}')
+            f'bce_loss: {bce_loss:.6f}, dice_loss: {dice_loss:.6f}, loss: {loss.item():.6f},  lr: {lr_:.6f}')
         
-        if i_batch > 0 and i_batch % args.sampled_save_nums == 0:
-            save_mode_path = os.path.join(pth_save_dir, f'epoch_{int(i_batch // args.sampled_save_nums)}.pth')
+        if (i_batch+1) % args.sampled_save_nums == 0:
+            save_mode_path = os.path.join(pth_save_dir, f'epoch_{int((i_batch+1) // args.sampled_save_nums)}.pth')
             model.save_parameters(save_mode_path)
             logger.info(f"save model to {save_mode_path}")
 
@@ -200,6 +181,7 @@ python scripts/projector/channel_train_batch.py \
     --n_per_side 64 \
     --points_per_batch 256 \
     --sampled_save_nums 100 \
+    --train_sample_num 800 \
     --dataset_name whu
     --debug_mode
 '''

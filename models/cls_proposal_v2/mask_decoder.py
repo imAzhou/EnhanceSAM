@@ -64,19 +64,19 @@ class MaskDecoder(nn.Module):
         )
 
         # new paramters
-        embed_dim, out_chans = encoder_embed_dim, transformer_dim
-        self.process_inter_feat = nn.Sequential(
-            nn.Conv2d(embed_dim, embed_dim, kernel_size=3, padding='same'),
-            nn.GELU(),
-            nn.Conv2d(embed_dim,out_chans, kernel_size=3, padding='same'),
-            nn.GELU(),
-        )
-        self.upscaling_inter_feat = nn.Sequential(
-            nn.ConvTranspose2d(embed_dim, transformer_dim, kernel_size=2, stride=2),
-            LayerNorm2d(transformer_dim),
-            nn.GELU(), 
-            nn.ConvTranspose2d(transformer_dim, transformer_dim // 8, kernel_size=2, stride=2)
-        )
+        # embed_dim, out_chans = encoder_embed_dim, transformer_dim
+        # self.process_inter_feat = nn.Sequential(
+        #     nn.Conv2d(embed_dim, embed_dim, kernel_size=3, padding='same'),
+        #     nn.GELU(),
+        #     nn.Conv2d(embed_dim, out_chans, kernel_size=3, padding='same'),
+        #     nn.GELU(),
+        # )
+        # self.upscaling_inter_feat = nn.Sequential(
+        #     nn.ConvTranspose2d(embed_dim, transformer_dim, kernel_size=2, stride=2),
+        #     LayerNorm2d(transformer_dim),
+        #     nn.GELU(), 
+        #     nn.ConvTranspose2d(transformer_dim, transformer_dim // 8, kernel_size=2, stride=2)
+        # )
         self.output_upscaling_2x = nn.Sequential(
             nn.ConvTranspose2d(transformer_dim // 8, transformer_dim // 16, kernel_size=2, stride=2),
             activation(),
@@ -96,7 +96,7 @@ class MaskDecoder(nn.Module):
         image_pe: torch.Tensor,
         sparse_prompt_embeddings: torch.Tensor,
         dense_prompt_embeddings: torch.Tensor,
-        inter_feature: torch.Tensor
+        # inter_feature: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         predict masks for <image_embeddings, prompt> pairs.
@@ -136,8 +136,9 @@ class MaskDecoder(nn.Module):
         # Run the transformer
         # hs, src,tow_way_keys = self.transformer(src, pos_src, tokens)
         # hs, src, attn_token_to_image = self.transformer(src, pos_src, tokens)
-        inter_feat_c256 = self.process_inter_feat(inter_feature.permute(0, 3, 1, 2))
-        hs, src = self.transformer(src, pos_src, tokens, inter_feat_c256)
+        # inter_feat_c256 = self.process_inter_feat(inter_feature.permute(0, 3, 1, 2))
+        # hs, src = self.transformer(src, pos_src, tokens, inter_feat_c256)
+        hs, src = self.transformer(src, pos_src, tokens)
         mask_tokens_out = hs[:, 0 : (1 + self.num_mask_tokens), :]
         start_idx,end_idx = 1 + self.num_mask_tokens, 1 + self.num_mask_tokens + self.num_classes_outputs
         cls_mask_tokens_out = hs[:, start_idx:end_idx, :]
@@ -145,9 +146,10 @@ class MaskDecoder(nn.Module):
         # Upscale mask embeddings and predict masks using the mask tokens
         src = src.transpose(1, 2).view(b, c, h, w)
         upscaled_embedding = self.output_upscaling(src)
-        upscaled_inter_embedding = self.upscaling_inter_feat(inter_feature.permute(0, 3, 1, 2))
-        fused_embedding = upscaled_embedding + upscaled_inter_embedding
-        upscaled_embedding_2x = self.output_upscaling_2x(fused_embedding)
+        # upscaled_inter_embedding = self.upscaling_inter_feat(inter_feature.permute(0, 3, 1, 2))
+        # fused_embedding = upscaled_embedding + upscaled_inter_embedding
+        # upscaled_embedding_2x = self.output_upscaling_2x(fused_embedding)
+        upscaled_embedding_2x = self.output_upscaling_2x(upscaled_embedding)
 
         cls_hyper_in_list: List[torch.Tensor] = []
         for i in range(self.num_classes_outputs):
