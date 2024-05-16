@@ -12,11 +12,11 @@ parser = argparse.ArgumentParser()
 # base args
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
 parser.add_argument('--device', type=str, default='cuda:0')
-parser.add_argument('--sam_ckpt', type=str, default='checkpoints_sam/sam_vit_h_4b8939.pth')
 parser.add_argument('--max_epochs', type=int, default=12, help='maximum epoch number to train and val')
 parser.add_argument('--debug_mode', action='store_true', help='If activated, log dirname prefis is debug')
 
 # about dataset
+parser.add_argument('--server_name', type=str)
 parser.add_argument('--dataset_name', type=str, default='whu')
 parser.add_argument('--use_aug', action='store_true')
 parser.add_argument('--use_embed', action='store_true')
@@ -77,16 +77,21 @@ if __name__ == "__main__":
     record_save_dir = 'logs/prompt_seg'
     
     # register model
+    sam_ckpt = dict(
+        zucc = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth',
+        hz = 'checkpoints_sam/sam_vit_h_4b8939.pth'
+    )
     model = PromptSegNet(
                 num_classes = args.num_classes,
                 useModule = args.semantic_module,
                 use_inner_feat = args.use_inner_feat,
                 use_embed = args.use_embed,
-                sam_ckpt = args.sam_ckpt,
+                sam_ckpt = sam_ckpt[args.server_name],
                 device = device
             ).to(device)
     # data loader
     train_loader,val_dataloader,metainfo = gene_loader(
+        server_name = args.server_name,
         data_tag = args.dataset_name,
         use_aug = args.use_aug,
         use_embed = args.use_embed,
@@ -140,7 +145,6 @@ if __name__ == "__main__":
 use_inner_feat
 python scripts/prompt_seg/main.py \
     --max_epochs 24 \
-    --sam_ckpt /x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth \
     --dataset_name whu \
     --use_inner_feat \
     --batch_size 16 \
@@ -153,14 +157,15 @@ python scripts/prompt_seg/main.py \
 
 use_embed
 python scripts/prompt_seg/main.py \
+    --server_name hz \
     --max_epochs 24 \
-    --sam_ckpt /x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth \
     --dataset_name whu \
     --use_embed \
     --batch_size 16 \
     --semantic_module conv \
     --loss_type bce_bdice \
     --base_lr 0.0001 \
+    --device cuda:1
     --train_sample_num 900 \
     --debug_mode
 '''
