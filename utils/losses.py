@@ -1,6 +1,8 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
+from .loss_mask import loss_masks
 
 class FocalLoss(nn.modules.loss._WeightedLoss):
     def __init__(self, gamma=2, weight=None, size_average=None,
@@ -101,3 +103,44 @@ class DiceLoss(nn.Module):
                 class_wise_dice.append(1.0 - dice.item())
                 loss += dice * weight[i]
         return loss / self.n_classes
+
+
+def cls_loss(*, pred_logits, target_masks, args):
+    '''
+    Args:
+        pred_logits: (Tensor): A tensor of shape (N, C, Hmask, Wmask) or (N, 1, Hmask, Wmask) for class-specific predict logits.
+        target_masks: A tensor of shape (N, H, W) that contains class index on a H x W grid.
+    '''
+    if args.loss_type == 'loss_masks':
+        bce_loss, dice_loss =  loss_masks(pred_logits, target_masks.unsqueeze(1).float())
+        return bce_loss + dice_loss
+    if args.loss_type == 'bce_bdice':
+        return bce_bdice(pred_logits, target_masks, args)
+    if args.loss_type == 'focal_bdice':
+        return focal_bdice(pred_logits, target_masks, args)
+    if args.loss_type == 'ce_dice':
+        return ce_dice(pred_logits, target_masks, args)
+
+def bce_bdice(pred_logits, target_masks, args):
+    bce_loss_fn = BCEWithLogitsLoss()
+    bdice_loss_fn = BinaryDiceLoss()
+    bce_loss = bce_loss_fn(pred_logits.squeeze(1), target_masks[:].float())
+    dice_loss = bdice_loss_fn(pred_logits, target_masks.unsqueeze(1))
+    loss = (1 - args.dice_param) * bce_loss + args.dice_param * dice_loss
+    return loss
+
+def focal_bdice(pred_logits, target_masks, args):
+    focal_loss_fn = FocalLoss()
+    bdice_loss_fn = BinaryDiceLoss()
+    bce_loss = focal_loss_fn(pred_logits.squeeze(1), target_masks[:].float())
+    dice_loss = bdice_loss_fn(pred_logits, target_masks.unsqueeze(1))
+    loss = (1 - args.dice_param) * bce_loss + args.dice_param * dice_loss
+    return loss
+
+def ce_dice(pred_logits, target_masks, args):
+    ce_loss_fn = CrossEntropyLoss(ignore_index = 255)
+    dice_loss_fn = DiceLoss(args.num_classes, ignore_index = 255)
+    ce_loss = ce_loss_fn(pred_logits, target_masks.long())
+    dice_loss = dice_loss_fn(pred_logits,target_masks, softmax=True)
+    loss = (1 - args.dice_param) * ce_loss + args.dice_param * dice_loss
+    return loss

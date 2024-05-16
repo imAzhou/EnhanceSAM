@@ -181,7 +181,7 @@ if __name__ == "__main__":
                     sam_pred_mask_1024 = F.interpolate(low_res_logits_bs, (1024, 1024), mode="bilinear", align_corners=False)
                     sam_pred_mask_1024,_ = torch.max((sam_pred_mask_1024.detach() > 0).squeeze(1), dim = 0)
                     logits_1024 = F.interpolate(outputs['keep_cls_logits'], (1024, 1024), mode="bilinear", align_corners=False).detach()
-                    pred_1024,_ = torch.max((F.sigmoid(logits_1024) > 0.7).squeeze(1), dim = 0)
+                    pred_1024,_ = torch.max((F.sigmoid(logits_1024) > 0.5).squeeze(1), dim = 0)
                     
                     credible_p_mask = sam_pred_mask_1024 & pred_1024
                     credible_n_mask = sam_pred_mask_1024 & (~pred_1024)
@@ -208,7 +208,7 @@ if __name__ == "__main__":
                         nonzero_inx, = np.nonzero(point_available)
                         for idx in nonzero_inx:
                             point_x,point_y = ps[idx].astype(int)
-                            if int(filter_mask_1024[point_y, point_x]) != 0:
+                            if int(filter_mask_1024[point_y, point_x]) < 0:
                                 point_available[idx] = 0
                         # print(f'filter point num: {len(nonzero_inx) - np.sum(point_available)}')
             # all_segment_logits.shape: (n_per_side**2, 1, 256, 256 )
