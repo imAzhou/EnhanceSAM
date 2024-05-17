@@ -1,6 +1,10 @@
+import torch
+import numpy as np
+import random
 from torch.utils.data import DataLoader
 from .building_dataset import BuildingDataset
 from .loveda import LoveDADataset
+from utils import set_seed
 
 root_dir = dict(
     zucc = '/x22201018/datasets/RemoteSensingDatasets/',
@@ -43,9 +47,11 @@ def gene_loader(
     train_dataloader = DataLoader(
         train_dataset,
         batch_size = train_bs,
-        shuffle = True,
+        # shuffle = True,
         num_workers = 0,
-        drop_last = True)
+        drop_last = True,
+        worker_init_fn=worker_init_fn
+    )
     val_dataset = dataset_cls(
         data_root = data_root_dir,
         mode = 'val',
@@ -55,8 +61,16 @@ def gene_loader(
         batch_size = val_bs,
         shuffle = True,
         num_workers = 0,
-        drop_last = True)
+        drop_last = True,
+        worker_init_fn=worker_init_fn
+    )
 
     metainfo = train_dataset.METAINFO
     
     return train_dataloader,val_dataloader,metainfo
+
+def worker_init_fn(worker_id):
+    # 获取全局随机种子
+    seed = torch.initial_seed() % 2**32
+    worker_seed = worker_id + seed
+    set_seed(worker_seed)

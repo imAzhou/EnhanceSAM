@@ -29,7 +29,7 @@ def get_logger(record_save_dir, model, args):
     for name,parameters in model.named_parameters():
         if parameters.requires_grad:
             logger.info(name)
-    return logger,pth_save_dir
+    return logger,files_save_dir
 
 def get_train_strategy(model, args):
     '''slow start & fast decay'''

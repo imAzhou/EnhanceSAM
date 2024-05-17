@@ -39,7 +39,7 @@ parser.add_argument('--save_each_epoch', action='store_true')
 args = parser.parse_args()
 
 def train_one_epoch(model: PromptSegNet, train_loader, optimizer):
-    
+
     model.train()
     len_loader = len(train_loader)
     for i_batch, sampled_batch in enumerate(tqdm(train_loader, ncols=70)):
@@ -100,7 +100,8 @@ if __name__ == "__main__":
         val_bs = 1
     )
     # create logger
-    logger,pth_save_dir = get_logger(record_save_dir, model, args)
+    logger,files_save_dir = get_logger(record_save_dir, model, args)
+    pth_save_dir = f'{files_save_dir}/checkpoints'
     # get optimizer and lr_scheduler
     optimizer,lr_scheduler = get_train_strategy(model, args)
     # get evaluator
@@ -135,7 +136,7 @@ if __name__ == "__main__":
     
     print(f'max_iou: {max_iou}, max_epoch: {max_epoch}')
     # save result file
-    config_file = os.path.join(record_save_dir, 'pred_result.txt')
+    config_file = os.path.join(files_save_dir, 'pred_result.txt')
     with open(config_file, 'w') as f:
         f.writelines(all_metrics)
         f.write(f'\nmax_iou: {max_iou}, max_epoch: {max_epoch}\n')
@@ -157,14 +158,16 @@ python scripts/prompt_seg/main.py \
 
 use_embed
 python scripts/prompt_seg/main.py \
-    --server_name hz \
-    --max_epochs 24 \
+    --server_name zucc \
+    --max_epochs 12 \
     --dataset_name whu \
     --use_embed \
     --batch_size 16 \
     --semantic_module conv \
     --loss_type bce_bdice \
     --base_lr 0.0001 \
+    --warmup_epoch 10 \
+    --gamma 0.25
     --device cuda:1
     --train_sample_num 900 \
     --debug_mode
