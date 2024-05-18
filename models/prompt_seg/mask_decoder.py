@@ -68,12 +68,18 @@ class MaskDecoder(nn.Module):
         # new paramters
         if use_inner_feat:
             embed_dim, out_chans = encoder_embed_dim, transformer_dim
+            # self.process_inter_feat = nn.Sequential(
+            #     nn.Conv2d(embed_dim, embed_dim, kernel_size=3, padding='same'),
+            #     nn.GELU(),
+            #     nn.Conv2d(embed_dim, out_chans, kernel_size=3, padding='same'),
+            #     nn.GELU(),
+            # )
             self.process_inter_feat = nn.Sequential(
-                nn.Conv2d(embed_dim, embed_dim, kernel_size=3, padding='same'),
-                nn.GELU(),
-                nn.Conv2d(embed_dim, out_chans, kernel_size=3, padding='same'),
-                nn.GELU(),
-            )
+                    nn.Conv2d(embed_dim, embed_dim, kernel_size=1),
+                    nn.Conv2d(embed_dim, embed_dim, kernel_size=3, groups=embed_dim, padding='same'),
+                    nn.GELU(),
+                    nn.Conv2d(embed_dim, out_chans, kernel_size=1),
+                )
             # self.upscaling_inter_feat = nn.Sequential(
             #     nn.ConvTranspose2d(embed_dim, transformer_dim, kernel_size=2, stride=2),
             #     LayerNorm2d(transformer_dim),

@@ -52,6 +52,7 @@ class BuildingDataset(Dataset):
             if train_sample_num > len(all_imgs):
                 raise ValueError("sample nums cannot surpass total image nums!")
             self.images = random.sample(all_imgs, train_sample_num)
+            print()
         else:
             self.images = all_imgs
         

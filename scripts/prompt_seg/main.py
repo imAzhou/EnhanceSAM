@@ -145,7 +145,8 @@ if __name__ == "__main__":
 '''
 use_inner_feat
 python scripts/prompt_seg/main.py \
-    --max_epochs 24 \
+    --server_name zucc \
+    --max_epochs 12 \
     --dataset_name whu \
     --use_inner_feat \
     --batch_size 16 \
@@ -153,6 +154,8 @@ python scripts/prompt_seg/main.py \
     --loss_type bce_bdice \
     --base_lr 0.0001 \
     --use_aug \
+    --warmup_epoch 10 \
+    --gamma 0.25 \
     --train_sample_num 900 \
     --debug_mode
 

@@ -275,11 +275,21 @@ class SemanticModule(nn.Module):
             self.cls_attn = Attention(embedding_dim, num_heads, internal_dim)
             self.norm = nn.LayerNorm(embedding_dim)
         if self.use_module == 'conv':
-            self.local_conv = nn.Sequential(
-                nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=3, padding='same'),
-                nn.ReLU(),
-                nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=3, padding='same'),
-            )
+            # self.local_conv = nn.Sequential(
+            #     nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=3, padding='same'),
+            #     nn.ReLU(),
+            #     nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=3, padding='same'),
+            # )
+            self.local_conv = nn.ModuleList()
+            self.depth = 1
+            for i in range(self.depth):
+                block = nn.Sequential(
+                    nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=1),
+                    nn.Conv2d(embedding_dim*2, embedding_dim*2, kernel_size=3, groups=embedding_dim*2, padding='same'),
+                    nn.ReLU(),
+                    nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=1),
+                )
+                self.local_conv.append(block)
         if self.use_module == 'both':
             self.cls_attn = Attention(embedding_dim, num_heads, internal_dim)
             self.norm = nn.LayerNorm(embedding_dim)
@@ -299,7 +309,10 @@ class SemanticModule(nn.Module):
         if self.use_module == 'conv':
             b,l,c = tokens.shape
             patch_size = int(math.sqrt(l))
-            local_conv_f = self.local_conv(tokens.transpose(-1,-2).view(b, c, patch_size, patch_size))
+            local_conv_f = tokens.transpose(-1,-2).view(b, c, patch_size, patch_size)
+            for block in self.local_conv:
+                local_conv_f = block(local_conv_f)
+            # local_conv_f = self.local_conv(tokens.transpose(-1,-2).view(b, c, patch_size, patch_size))
             semantic_tokens = local_conv_f.flatten(2).permute(0, 2, 1)
 
         if self.use_module == 'both':

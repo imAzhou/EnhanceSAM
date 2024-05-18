@@ -47,10 +47,10 @@ def gene_loader(
     train_dataloader = DataLoader(
         train_dataset,
         batch_size = train_bs,
-        # shuffle = True,
+        shuffle = True,
         num_workers = 0,
         drop_last = True,
-        worker_init_fn=worker_init_fn
+        # worker_init_fn=worker_init_fn
     )
     val_dataset = dataset_cls(
         data_root = data_root_dir,
@@ -62,7 +62,7 @@ def gene_loader(
         shuffle = True,
         num_workers = 0,
         drop_last = True,
-        worker_init_fn=worker_init_fn
+        # worker_init_fn=worker_init_fn
     )
 
     metainfo = train_dataset.METAINFO
