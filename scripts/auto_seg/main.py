@@ -38,6 +38,7 @@ parser.add_argument('--base_lr', type=float, default=0.0001)
 parser.add_argument('--warmup_epoch', default=6, type=int)
 parser.add_argument('--gamma', default=0.5, type=float)
 parser.add_argument('--dice_param', type=float, default=0.8)
+parser.add_argument('--sample_point_train', action='store_true')
 parser.add_argument('--save_each_epoch', action='store_true')
 
 args = parser.parse_args()
@@ -94,6 +95,22 @@ def train_one_epoch(model: AutoSegNet, train_loader, optimizer):
         bs_image_embedding = model.gene_img_embed(sampled_batch)
 
         ps,pb = model.points_for_sam, model.points_per_batch
+        if args.sample_point_train:
+            mask_1024 = sampled_batch['mask_1024'][0]   # mask_1024.shape: (1024,1024)
+            ps_pos_neg = np.array([mask_1024[point_y,point_x] for point_x,point_y in ps.astype(int)])
+            positive_num,negative_num = 128,256
+            positive_coords_idx, = np.nonzero(ps_pos_neg)
+            negative_coords_idx, = np.where(ps_pos_neg == 0)
+            if positive_coords_idx.shape[0] > positive_num:
+                random_pos_index = np.random.choice(positive_coords_idx, size=positive_num, replace=False)
+            else:
+                random_pos_index = positive_coords_idx
+            random_neg_index = np.random.choice(negative_coords_idx, size=negative_num, replace=False)
+
+            ps_pos = [ps[idx] for idx in random_pos_index]
+            ps_neg = [ps[idx] for idx in random_neg_index]
+            ps = np.array([*ps_pos, *ps_neg])
+
         for (batch_idx, (point_batch,)) in enumerate(batch_iterator(pb, ps)):
             outputs = model.forward_batch_points(bs_image_embedding, point_batch)
             pred_cls_logits = outputs['cls_logits']    # shape: (points_per_batch, 1, 256, 256)
@@ -114,7 +131,6 @@ def val_one_epoch(model: AutoSegNet, val_loader):
     for i_batch, sampled_batch in enumerate(tqdm(val_loader, ncols=70)):
 
         mask_1024 = sampled_batch['mask_1024'].to(device)
-
         bs_image_embedding = model.gene_img_embed(sampled_batch)
 
         all_segment_logits = []
