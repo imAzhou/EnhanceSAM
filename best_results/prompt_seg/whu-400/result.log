@@ -1,0 +1,371 @@
+2024-05-18 08:11:37 : 网络总更新参数量：{'Total': '643.1859M', 'Trainable': '2.7284M'} 
+2024-05-18 08:11:37 : 网络更新参数为： 
+2024-05-18 08:11:37 : mask_decoder.transformer.layers.0.semantic_module.local_conv.0.0.weight 
+2024-05-18 08:11:37 : mask_decoder.transformer.layers.0.semantic_module.local_conv.0.0.bias 
+2024-05-18 08:11:37 : mask_decoder.transformer.layers.0.semantic_module.local_conv.0.1.weight 
+2024-05-18 08:11:37 : mask_decoder.transformer.layers.0.semantic_module.local_conv.0.1.bias 
+2024-05-18 08:11:37 : mask_decoder.transformer.layers.0.semantic_module.local_conv.0.3.weight 
+2024-05-18 08:11:37 : mask_decoder.transformer.layers.0.semantic_module.local_conv.0.3.bias 
+2024-05-18 08:11:37 : mask_decoder.transformer.layers.1.semantic_module.local_conv.0.0.weight 
+2024-05-18 08:11:37 : mask_decoder.transformer.layers.1.semantic_module.local_conv.0.0.bias 
+2024-05-18 08:11:37 : mask_decoder.transformer.layers.1.semantic_module.local_conv.0.1.weight 
+2024-05-18 08:11:37 : mask_decoder.transformer.layers.1.semantic_module.local_conv.0.1.bias 
+2024-05-18 08:11:37 : mask_decoder.transformer.layers.1.semantic_module.local_conv.0.3.weight 
+2024-05-18 08:11:37 : mask_decoder.transformer.layers.1.semantic_module.local_conv.0.3.bias 
+2024-05-18 08:11:37 : mask_decoder.output_upscaling.0.weight 
+2024-05-18 08:11:37 : mask_decoder.output_upscaling.0.bias 
+2024-05-18 08:11:37 : mask_decoder.output_upscaling.1.weight 
+2024-05-18 08:11:37 : mask_decoder.output_upscaling.1.bias 
+2024-05-18 08:11:37 : mask_decoder.output_upscaling.3.weight 
+2024-05-18 08:11:37 : mask_decoder.output_upscaling.3.bias 
+2024-05-18 08:11:37 : mask_decoder.process_inter_feat.0.weight 
+2024-05-18 08:11:37 : mask_decoder.process_inter_feat.0.bias 
+2024-05-18 08:11:37 : mask_decoder.process_inter_feat.1.weight 
+2024-05-18 08:11:37 : mask_decoder.process_inter_feat.1.bias 
+2024-05-18 08:11:37 : mask_decoder.process_inter_feat.3.weight 
+2024-05-18 08:11:37 : mask_decoder.process_inter_feat.3.bias 
+2024-05-18 08:11:37 : mask_decoder.output_upscaling_2x.0.weight 
+2024-05-18 08:11:37 : mask_decoder.output_upscaling_2x.0.bias 
+2024-05-18 08:11:37 : mask_decoder.cls_tokens.weight 
+2024-05-18 08:11:37 : mask_decoder.cls_mlps.0.layers.0.weight 
+2024-05-18 08:11:37 : mask_decoder.cls_mlps.0.layers.0.bias 
+2024-05-18 08:11:37 : mask_decoder.cls_mlps.0.layers.1.weight 
+2024-05-18 08:11:37 : mask_decoder.cls_mlps.0.layers.1.bias 
+2024-05-18 08:11:37 : mask_decoder.cls_mlps.0.layers.2.weight 
+2024-05-18 08:11:37 : mask_decoder.cls_mlps.0.layers.2.bias 
+2024-05-18 08:11:37 : epoch: 0, learning rate: 0.000010 
+2024-05-18 08:11:47 : iteration 0/25: loss: 0.797479 
+2024-05-18 08:11:56 : iteration 1/25: loss: 0.794819 
+2024-05-18 08:12:04 : iteration 2/25: loss: 0.777574 
+2024-05-18 08:12:12 : iteration 3/25: loss: 0.783572 
+2024-05-18 08:12:21 : iteration 4/25: loss: 0.796471 
+2024-05-18 08:12:29 : iteration 5/25: loss: 0.808473 
+2024-05-18 08:12:37 : iteration 6/25: loss: 0.787304 
+2024-05-18 08:12:46 : iteration 7/25: loss: 0.781901 
+2024-05-18 08:12:54 : iteration 8/25: loss: 0.801933 
+2024-05-18 08:13:02 : iteration 9/25: loss: 0.780157 
+2024-05-18 08:13:10 : iteration 10/25: loss: 0.759578 
+2024-05-18 08:13:19 : iteration 11/25: loss: 0.803183 
+2024-05-18 08:13:27 : iteration 12/25: loss: 0.764313 
+2024-05-18 08:13:35 : iteration 13/25: loss: 0.755367 
+2024-05-18 08:13:43 : iteration 14/25: loss: 0.761865 
+2024-05-18 08:13:52 : iteration 15/25: loss: 0.812409 
+2024-05-18 08:14:00 : iteration 16/25: loss: 0.789660 
+2024-05-18 08:14:08 : iteration 17/25: loss: 0.789422 
+2024-05-18 08:14:17 : iteration 18/25: loss: 0.770058 
+2024-05-18 08:14:25 : iteration 19/25: loss: 0.760707 
+2024-05-18 08:14:33 : iteration 20/25: loss: 0.773582 
+2024-05-18 08:14:42 : iteration 21/25: loss: 0.794624 
+2024-05-18 08:14:50 : iteration 22/25: loss: 0.805608 
+2024-05-18 08:14:59 : iteration 23/25: loss: 0.754550 
+2024-05-18 08:15:07 : iteration 24/25: loss: 0.795226 
+2024-05-18 08:22:51 : epoch: 0 {'aAcc': 0.0, 'mIoU': 0.0, 'mAcc': 0.0}
+ 
+2024-05-18 08:22:51 : epoch: 1, learning rate: 0.000020 
+2024-05-18 08:23:00 : iteration 0/25: loss: 0.792924 
+2024-05-18 08:23:08 : iteration 1/25: loss: 0.755639 
+2024-05-18 08:23:17 : iteration 2/25: loss: 0.785352 
+2024-05-18 08:23:26 : iteration 3/25: loss: 0.785541 
+2024-05-18 08:23:35 : iteration 4/25: loss: 0.779419 
+2024-05-18 08:23:44 : iteration 5/25: loss: 0.770131 
+2024-05-18 08:23:52 : iteration 6/25: loss: 0.765779 
+2024-05-18 08:24:00 : iteration 7/25: loss: 0.768635 
+2024-05-18 08:24:09 : iteration 8/25: loss: 0.768581 
+2024-05-18 08:24:17 : iteration 9/25: loss: 0.772721 
+2024-05-18 08:24:26 : iteration 10/25: loss: 0.772162 
+2024-05-18 08:24:35 : iteration 11/25: loss: 0.774004 
+2024-05-18 08:24:43 : iteration 12/25: loss: 0.772297 
+2024-05-18 08:24:52 : iteration 13/25: loss: 0.813012 
+2024-05-18 08:25:00 : iteration 14/25: loss: 0.771589 
+2024-05-18 08:25:10 : iteration 15/25: loss: 0.756062 
+2024-05-18 08:25:18 : iteration 16/25: loss: 0.774608 
+2024-05-18 08:25:27 : iteration 17/25: loss: 0.788306 
+2024-05-18 08:25:37 : iteration 18/25: loss: 0.769427 
+2024-05-18 08:25:46 : iteration 19/25: loss: 0.790767 
+2024-05-18 08:25:54 : iteration 20/25: loss: 0.807095 
+2024-05-18 08:26:03 : iteration 21/25: loss: 0.785926 
+2024-05-18 08:26:12 : iteration 22/25: loss: 0.800211 
+2024-05-18 08:26:20 : iteration 23/25: loss: 0.767342 
+2024-05-18 08:26:29 : iteration 24/25: loss: 0.751578 
+2024-05-18 08:34:07 : epoch: 1 {'aAcc': 0.0, 'mIoU': 0.0, 'mAcc': 0.0}
+ 
+2024-05-18 08:34:07 : epoch: 2, learning rate: 0.000030 
+2024-05-18 08:34:16 : iteration 0/25: loss: 0.762737 
+2024-05-18 08:34:24 : iteration 1/25: loss: 0.762615 
+2024-05-18 08:34:33 : iteration 2/25: loss: 0.764552 
+2024-05-18 08:34:42 : iteration 3/25: loss: 0.790640 
+2024-05-18 08:34:51 : iteration 4/25: loss: 0.776748 
+2024-05-18 08:34:59 : iteration 5/25: loss: 0.778010 
+2024-05-18 08:35:08 : iteration 6/25: loss: 0.782488 
+2024-05-18 08:35:17 : iteration 7/25: loss: 0.778148 
+2024-05-18 08:35:25 : iteration 8/25: loss: 0.780691 
+2024-05-18 08:35:34 : iteration 9/25: loss: 0.765071 
+2024-05-18 08:35:42 : iteration 10/25: loss: 0.782757 
+2024-05-18 08:35:51 : iteration 11/25: loss: 0.756649 
+2024-05-18 08:36:00 : iteration 12/25: loss: 0.754655 
+2024-05-18 08:36:09 : iteration 13/25: loss: 0.748754 
+2024-05-18 08:36:17 : iteration 14/25: loss: 0.756819 
+2024-05-18 08:36:26 : iteration 15/25: loss: 0.775908 
+2024-05-18 08:36:35 : iteration 16/25: loss: 0.743443 
+2024-05-18 08:36:43 : iteration 17/25: loss: 0.762523 
+2024-05-18 08:36:52 : iteration 18/25: loss: 0.788463 
+2024-05-18 08:37:01 : iteration 19/25: loss: 0.747377 
+2024-05-18 08:37:09 : iteration 20/25: loss: 0.764393 
+2024-05-18 08:37:17 : iteration 21/25: loss: 0.737359 
+2024-05-18 08:37:26 : iteration 22/25: loss: 0.795395 
+2024-05-18 08:37:35 : iteration 23/25: loss: 0.779784 
+2024-05-18 08:37:44 : iteration 24/25: loss: 0.760155 
+2024-05-18 08:45:22 : epoch: 2 {'aAcc': 0.0, 'mIoU': 0.0, 'mAcc': 0.0}
+ 
+2024-05-18 08:45:22 : epoch: 3, learning rate: 0.000040 
+2024-05-18 08:45:30 : iteration 0/25: loss: 0.740289 
+2024-05-18 08:45:39 : iteration 1/25: loss: 0.753798 
+2024-05-18 08:45:47 : iteration 2/25: loss: 0.795140 
+2024-05-18 08:45:56 : iteration 3/25: loss: 0.743329 
+2024-05-18 08:46:04 : iteration 4/25: loss: 0.793176 
+2024-05-18 08:46:13 : iteration 5/25: loss: 0.783510 
+2024-05-18 08:46:21 : iteration 6/25: loss: 0.746245 
+2024-05-18 08:46:30 : iteration 7/25: loss: 0.744784 
+2024-05-18 08:46:38 : iteration 8/25: loss: 0.765800 
+2024-05-18 08:46:47 : iteration 9/25: loss: 0.750584 
+2024-05-18 08:46:55 : iteration 10/25: loss: 0.773239 
+2024-05-18 08:47:04 : iteration 11/25: loss: 0.733304 
+2024-05-18 08:47:12 : iteration 12/25: loss: 0.729397 
+2024-05-18 08:47:21 : iteration 13/25: loss: 0.733548 
+2024-05-18 08:47:29 : iteration 14/25: loss: 0.740282 
+2024-05-18 08:47:38 : iteration 15/25: loss: 0.735734 
+2024-05-18 08:47:47 : iteration 16/25: loss: 0.735978 
+2024-05-18 08:47:56 : iteration 17/25: loss: 0.728092 
+2024-05-18 08:48:04 : iteration 18/25: loss: 0.722482 
+2024-05-18 08:48:13 : iteration 19/25: loss: 0.712155 
+2024-05-18 08:48:21 : iteration 20/25: loss: 0.706926 
+2024-05-18 08:48:29 : iteration 21/25: loss: 0.732720 
+2024-05-18 08:48:38 : iteration 22/25: loss: 0.751696 
+2024-05-18 08:48:46 : iteration 23/25: loss: 0.735060 
+2024-05-18 08:48:55 : iteration 24/25: loss: 0.713477 
+2024-05-18 08:56:33 : epoch: 3 {'aAcc': 0.0, 'mIoU': 0.0, 'mAcc': 0.0}
+ 
+2024-05-18 08:56:33 : epoch: 4, learning rate: 0.000050 
+2024-05-18 08:56:41 : iteration 0/25: loss: 0.698137 
+2024-05-18 08:56:50 : iteration 1/25: loss: 0.706816 
+2024-05-18 08:56:58 : iteration 2/25: loss: 0.723814 
+2024-05-18 08:57:07 : iteration 3/25: loss: 0.708196 
+2024-05-18 08:57:15 : iteration 4/25: loss: 0.722091 
+2024-05-18 08:57:23 : iteration 5/25: loss: 0.721863 
+2024-05-18 08:57:32 : iteration 6/25: loss: 0.693093 
+2024-05-18 08:57:40 : iteration 7/25: loss: 0.685077 
+2024-05-18 08:57:48 : iteration 8/25: loss: 0.688651 
+2024-05-18 08:57:57 : iteration 9/25: loss: 0.680940 
+2024-05-18 08:58:05 : iteration 10/25: loss: 0.671600 
+2024-05-18 08:58:14 : iteration 11/25: loss: 0.688443 
+2024-05-18 08:58:23 : iteration 12/25: loss: 0.702802 
+2024-05-18 08:58:31 : iteration 13/25: loss: 0.720712 
+2024-05-18 08:58:40 : iteration 14/25: loss: 0.679017 
+2024-05-18 08:58:49 : iteration 15/25: loss: 0.710497 
+2024-05-18 08:58:57 : iteration 16/25: loss: 0.662627 
+2024-05-18 08:59:06 : iteration 17/25: loss: 0.709573 
+2024-05-18 08:59:14 : iteration 18/25: loss: 0.685753 
+2024-05-18 08:59:23 : iteration 19/25: loss: 0.686888 
+2024-05-18 08:59:31 : iteration 20/25: loss: 0.661903 
+2024-05-18 08:59:40 : iteration 21/25: loss: 0.648144 
+2024-05-18 08:59:48 : iteration 22/25: loss: 0.693451 
+2024-05-18 08:59:57 : iteration 23/25: loss: 0.661078 
+2024-05-18 09:00:05 : iteration 24/25: loss: 0.648144 
+2024-05-18 09:07:44 : epoch: 4 {'aAcc': 12.47, 'mIoU': 6.65, 'mAcc': 12.47}
+ 
+2024-05-18 09:07:44 : epoch: 5, learning rate: 0.000060 
+2024-05-18 09:07:52 : iteration 0/25: loss: 0.656693 
+2024-05-18 09:08:01 : iteration 1/25: loss: 0.652550 
+2024-05-18 09:08:09 : iteration 2/25: loss: 0.640002 
+2024-05-18 09:08:18 : iteration 3/25: loss: 0.664590 
+2024-05-18 09:08:26 : iteration 4/25: loss: 0.636766 
+2024-05-18 09:08:35 : iteration 5/25: loss: 0.629993 
+2024-05-18 09:08:44 : iteration 6/25: loss: 0.624805 
+2024-05-18 09:08:52 : iteration 7/25: loss: 0.640756 
+2024-05-18 09:09:01 : iteration 8/25: loss: 0.641037 
+2024-05-18 09:09:09 : iteration 9/25: loss: 0.623603 
+2024-05-18 09:09:18 : iteration 10/25: loss: 0.600343 
+2024-05-18 09:09:27 : iteration 11/25: loss: 0.641842 
+2024-05-18 09:09:35 : iteration 12/25: loss: 0.595233 
+2024-05-18 09:09:44 : iteration 13/25: loss: 0.607647 
+2024-05-18 09:09:53 : iteration 14/25: loss: 0.629444 
+2024-05-18 09:10:01 : iteration 15/25: loss: 0.590492 
+2024-05-18 09:10:10 : iteration 16/25: loss: 0.623105 
+2024-05-18 09:10:19 : iteration 17/25: loss: 0.607860 
+2024-05-18 09:10:27 : iteration 18/25: loss: 0.593669 
+2024-05-18 09:10:35 : iteration 19/25: loss: 0.600712 
+2024-05-18 09:10:44 : iteration 20/25: loss: 0.613667 
+2024-05-18 09:10:53 : iteration 21/25: loss: 0.638716 
+2024-05-18 09:11:01 : iteration 22/25: loss: 0.566373 
+2024-05-18 09:11:10 : iteration 23/25: loss: 0.588937 
+2024-05-18 09:11:18 : iteration 24/25: loss: 0.600987 
+2024-05-18 09:18:56 : epoch: 5 {'aAcc': 92.87, 'mIoU': 86.69, 'mAcc': 92.87}
+ 
+2024-05-18 09:18:56 : epoch: 6, learning rate: 0.000070 
+2024-05-18 09:19:04 : iteration 0/25: loss: 0.574732 
+2024-05-18 09:19:13 : iteration 1/25: loss: 0.569920 
+2024-05-18 09:19:21 : iteration 2/25: loss: 0.601029 
+2024-05-18 09:19:30 : iteration 3/25: loss: 0.584880 
+2024-05-18 09:19:38 : iteration 4/25: loss: 0.553987 
+2024-05-18 09:19:47 : iteration 5/25: loss: 0.592670 
+2024-05-18 09:19:55 : iteration 6/25: loss: 0.553632 
+2024-05-18 09:20:04 : iteration 7/25: loss: 0.541626 
+2024-05-18 09:20:12 : iteration 8/25: loss: 0.565142 
+2024-05-18 09:20:21 : iteration 9/25: loss: 0.587740 
+2024-05-18 09:20:30 : iteration 10/25: loss: 0.577378 
+2024-05-18 09:20:38 : iteration 11/25: loss: 0.526826 
+2024-05-18 09:20:47 : iteration 12/25: loss: 0.583437 
+2024-05-18 09:20:55 : iteration 13/25: loss: 0.536627 
+2024-05-18 09:21:03 : iteration 14/25: loss: 0.555514 
+2024-05-18 09:21:11 : iteration 15/25: loss: 0.557021 
+2024-05-18 09:21:20 : iteration 16/25: loss: 0.558972 
+2024-05-18 09:21:28 : iteration 17/25: loss: 0.616558 
+2024-05-18 09:21:37 : iteration 18/25: loss: 0.537299 
+2024-05-18 09:21:46 : iteration 19/25: loss: 0.535033 
+2024-05-18 09:21:54 : iteration 20/25: loss: 0.532761 
+2024-05-18 09:22:02 : iteration 21/25: loss: 0.529748 
+2024-05-18 09:22:11 : iteration 22/25: loss: 0.532426 
+2024-05-18 09:22:19 : iteration 23/25: loss: 0.541686 
+2024-05-18 09:22:28 : iteration 24/25: loss: 0.526833 
+2024-05-18 09:30:06 : epoch: 6 {'aAcc': 89.6, 'mIoU': 81.16, 'mAcc': 89.6}
+ 
+2024-05-18 09:30:06 : epoch: 7, learning rate: 0.000080 
+2024-05-18 09:30:14 : iteration 0/25: loss: 0.522208 
+2024-05-18 09:30:23 : iteration 1/25: loss: 0.500010 
+2024-05-18 09:30:31 : iteration 2/25: loss: 0.545400 
+2024-05-18 09:30:40 : iteration 3/25: loss: 0.539269 
+2024-05-18 09:30:48 : iteration 4/25: loss: 0.523670 
+2024-05-18 09:30:56 : iteration 5/25: loss: 0.504694 
+2024-05-18 09:31:05 : iteration 6/25: loss: 0.484115 
+2024-05-18 09:31:13 : iteration 7/25: loss: 0.535115 
+2024-05-18 09:31:22 : iteration 8/25: loss: 0.500437 
+2024-05-18 09:31:30 : iteration 9/25: loss: 0.510503 
+2024-05-18 09:31:39 : iteration 10/25: loss: 0.533278 
+2024-05-18 09:31:47 : iteration 11/25: loss: 0.544659 
+2024-05-18 09:31:56 : iteration 12/25: loss: 0.559293 
+2024-05-18 09:32:04 : iteration 13/25: loss: 0.514801 
+2024-05-18 09:32:13 : iteration 14/25: loss: 0.491195 
+2024-05-18 09:32:21 : iteration 15/25: loss: 0.542928 
+2024-05-18 09:32:30 : iteration 16/25: loss: 0.565401 
+2024-05-18 09:32:38 : iteration 17/25: loss: 0.549536 
+2024-05-18 09:32:46 : iteration 18/25: loss: 0.507335 
+2024-05-18 09:32:55 : iteration 19/25: loss: 0.440668 
+2024-05-18 09:33:03 : iteration 20/25: loss: 0.494170 
+2024-05-18 09:33:12 : iteration 21/25: loss: 0.509598 
+2024-05-18 09:33:20 : iteration 22/25: loss: 0.498741 
+2024-05-18 09:33:29 : iteration 23/25: loss: 0.479729 
+2024-05-18 09:33:37 : iteration 24/25: loss: 0.463657 
+2024-05-18 09:41:15 : epoch: 7 {'aAcc': 90.28, 'mIoU': 82.28, 'mAcc': 90.28}
+ 
+2024-05-18 09:41:15 : epoch: 8, learning rate: 0.000090 
+2024-05-18 09:41:24 : iteration 0/25: loss: 0.455572 
+2024-05-18 09:41:33 : iteration 1/25: loss: 0.546143 
+2024-05-18 09:41:41 : iteration 2/25: loss: 0.537844 
+2024-05-18 09:41:49 : iteration 3/25: loss: 0.429285 
+2024-05-18 09:41:58 : iteration 4/25: loss: 0.518333 
+2024-05-18 09:42:06 : iteration 5/25: loss: 0.499997 
+2024-05-18 09:42:15 : iteration 6/25: loss: 0.504048 
+2024-05-18 09:42:23 : iteration 7/25: loss: 0.521371 
+2024-05-18 09:42:32 : iteration 8/25: loss: 0.511544 
+2024-05-18 09:42:40 : iteration 9/25: loss: 0.386368 
+2024-05-18 09:42:49 : iteration 10/25: loss: 0.496101 
+2024-05-18 09:42:57 : iteration 11/25: loss: 0.536849 
+2024-05-18 09:43:06 : iteration 12/25: loss: 0.580675 
+2024-05-18 09:43:15 : iteration 13/25: loss: 0.483004 
+2024-05-18 09:43:23 : iteration 14/25: loss: 0.520754 
+2024-05-18 09:43:31 : iteration 15/25: loss: 0.483496 
+2024-05-18 09:43:40 : iteration 16/25: loss: 0.565407 
+2024-05-18 09:43:49 : iteration 17/25: loss: 0.541817 
+2024-05-18 09:43:57 : iteration 18/25: loss: 0.470444 
+2024-05-18 09:44:06 : iteration 19/25: loss: 0.373757 
+2024-05-18 09:44:14 : iteration 20/25: loss: 0.506955 
+2024-05-18 09:44:23 : iteration 21/25: loss: 0.470137 
+2024-05-18 09:44:32 : iteration 22/25: loss: 0.458616 
+2024-05-18 09:44:40 : iteration 23/25: loss: 0.427276 
+2024-05-18 09:44:49 : iteration 24/25: loss: 0.464528 
+2024-05-18 09:52:26 : epoch: 8 {'aAcc': 93.66, 'mIoU': 88.08, 'mAcc': 93.66}
+ 
+2024-05-18 09:52:27 : epoch: 9, learning rate: 0.000100 
+2024-05-18 09:52:35 : iteration 0/25: loss: 0.461337 
+2024-05-18 09:52:43 : iteration 1/25: loss: 0.448671 
+2024-05-18 09:52:52 : iteration 2/25: loss: 0.520778 
+2024-05-18 09:53:01 : iteration 3/25: loss: 0.475549 
+2024-05-18 09:53:09 : iteration 4/25: loss: 0.487059 
+2024-05-18 09:53:18 : iteration 5/25: loss: 0.471801 
+2024-05-18 09:53:26 : iteration 6/25: loss: 0.483810 
+2024-05-18 09:53:35 : iteration 7/25: loss: 0.507888 
+2024-05-18 09:53:44 : iteration 8/25: loss: 0.447911 
+2024-05-18 09:53:53 : iteration 9/25: loss: 0.513690 
+2024-05-18 09:54:02 : iteration 10/25: loss: 0.363777 
+2024-05-18 09:54:10 : iteration 11/25: loss: 0.494234 
+2024-05-18 09:54:19 : iteration 12/25: loss: 0.510501 
+2024-05-18 09:54:28 : iteration 13/25: loss: 0.502253 
+2024-05-18 09:54:37 : iteration 14/25: loss: 0.484396 
+2024-05-18 09:54:45 : iteration 15/25: loss: 0.480904 
+2024-05-18 09:54:54 : iteration 16/25: loss: 0.484589 
+2024-05-18 09:55:02 : iteration 17/25: loss: 0.479645 
+2024-05-18 09:55:10 : iteration 18/25: loss: 0.451947 
+2024-05-18 09:55:19 : iteration 19/25: loss: 0.507186 
+2024-05-18 09:55:28 : iteration 20/25: loss: 0.439598 
+2024-05-18 09:55:36 : iteration 21/25: loss: 0.586637 
+2024-05-18 09:55:45 : iteration 22/25: loss: 0.425715 
+2024-05-18 09:55:54 : iteration 23/25: loss: 0.425495 
+2024-05-18 09:56:02 : iteration 24/25: loss: 0.503163 
+2024-05-18 10:03:40 : epoch: 9 {'aAcc': 95.64, 'mIoU': 91.64, 'mAcc': 95.64}
+ 
+2024-05-18 10:03:40 : epoch: 10, learning rate: 0.000025 
+2024-05-18 10:03:48 : iteration 0/25: loss: 0.498211 
+2024-05-18 10:03:57 : iteration 1/25: loss: 0.484131 
+2024-05-18 10:04:06 : iteration 2/25: loss: 0.476878 
+2024-05-18 10:04:14 : iteration 3/25: loss: 0.401574 
+2024-05-18 10:04:23 : iteration 4/25: loss: 0.514651 
+2024-05-18 10:04:31 : iteration 5/25: loss: 0.468993 
+2024-05-18 10:04:40 : iteration 6/25: loss: 0.443511 
+2024-05-18 10:04:49 : iteration 7/25: loss: 0.445772 
+2024-05-18 10:04:57 : iteration 8/25: loss: 0.518674 
+2024-05-18 10:05:06 : iteration 9/25: loss: 0.505352 
+2024-05-18 10:05:14 : iteration 10/25: loss: 0.411126 
+2024-05-18 10:05:23 : iteration 11/25: loss: 0.432646 
+2024-05-18 10:05:32 : iteration 12/25: loss: 0.462875 
+2024-05-18 10:05:40 : iteration 13/25: loss: 0.467717 
+2024-05-18 10:05:49 : iteration 14/25: loss: 0.481168 
+2024-05-18 10:05:57 : iteration 15/25: loss: 0.438450 
+2024-05-18 10:06:07 : iteration 16/25: loss: 0.468496 
+2024-05-18 10:06:15 : iteration 17/25: loss: 0.467915 
+2024-05-18 10:06:24 : iteration 18/25: loss: 0.453973 
+2024-05-18 10:06:33 : iteration 19/25: loss: 0.472839 
+2024-05-18 10:06:42 : iteration 20/25: loss: 0.500559 
+2024-05-18 10:06:50 : iteration 21/25: loss: 0.424744 
+2024-05-18 10:06:59 : iteration 22/25: loss: 0.507129 
+2024-05-18 10:07:08 : iteration 23/25: loss: 0.426324 
+2024-05-18 10:07:16 : iteration 24/25: loss: 0.485424 
+2024-05-18 10:14:54 : epoch: 10 {'aAcc': 96.33, 'mIoU': 92.92, 'mAcc': 96.33}
+ 
+2024-05-18 10:14:54 : epoch: 11, learning rate: 0.000006 
+2024-05-18 10:15:02 : iteration 0/25: loss: 0.421581 
+2024-05-18 10:15:11 : iteration 1/25: loss: 0.491974 
+2024-05-18 10:15:19 : iteration 2/25: loss: 0.441040 
+2024-05-18 10:15:28 : iteration 3/25: loss: 0.500905 
+2024-05-18 10:15:36 : iteration 4/25: loss: 0.407842 
+2024-05-18 10:15:45 : iteration 5/25: loss: 0.470074 
+2024-05-18 10:15:53 : iteration 6/25: loss: 0.487486 
+2024-05-18 10:16:02 : iteration 7/25: loss: 0.459464 
+2024-05-18 10:16:10 : iteration 8/25: loss: 0.471699 
+2024-05-18 10:16:19 : iteration 9/25: loss: 0.507756 
+2024-05-18 10:16:27 : iteration 10/25: loss: 0.481781 
+2024-05-18 10:16:35 : iteration 11/25: loss: 0.424074 
+2024-05-18 10:16:44 : iteration 12/25: loss: 0.500661 
+2024-05-18 10:16:52 : iteration 13/25: loss: 0.436751 
+2024-05-18 10:17:00 : iteration 14/25: loss: 0.487141 
+2024-05-18 10:17:09 : iteration 15/25: loss: 0.424630 
+2024-05-18 10:17:17 : iteration 16/25: loss: 0.397663 
+2024-05-18 10:17:25 : iteration 17/25: loss: 0.455956 
+2024-05-18 10:17:34 : iteration 18/25: loss: 0.401615 
+2024-05-18 10:17:43 : iteration 19/25: loss: 0.477349 
+2024-05-18 10:17:51 : iteration 20/25: loss: 0.455117 
+2024-05-18 10:18:00 : iteration 21/25: loss: 0.513801 
+2024-05-18 10:18:08 : iteration 22/25: loss: 0.475408 
+2024-05-18 10:18:17 : iteration 23/25: loss: 0.482911 
+2024-05-18 10:18:26 : iteration 24/25: loss: 0.499958 
+2024-05-18 10:26:03 : epoch: 11 {'aAcc': 92.74, 'mIoU': 86.46, 'mAcc': 92.74}
+ 

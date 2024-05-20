@@ -3,7 +3,7 @@ import os
 import torch
 import argparse
 from help_func.tools import set_seed
-from models.projector import ProjectorNet
+from models.auto_seg import ProjectorNet
 from tqdm import tqdm
 from datasets.building_dataset import BuildingDataset
 from torch.utils.data import DataLoader

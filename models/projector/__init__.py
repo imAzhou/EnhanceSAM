@@ -1,2 +1,0 @@
-from .projector_net import ProjectorNet
-from .channel_projector_net import ChannelProjectorNet

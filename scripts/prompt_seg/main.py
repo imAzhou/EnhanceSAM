@@ -43,7 +43,6 @@ def train_one_epoch(model: PromptSegNet, train_loader, optimizer):
     model.train()
     len_loader = len(train_loader)
     for i_batch, sampled_batch in enumerate(tqdm(train_loader, ncols=70)):
-        
         mask_512 = sampled_batch['mask_512'].to(device) # shape: [bs, 512, 512]       
         outputs = model(sampled_batch)
         pred_logits = outputs['pred_mask_512']  # shape: [bs, num_classes, 512, 512]
@@ -65,7 +64,7 @@ def val_one_epoch(model: PromptSegNet, val_loader):
         # shape: [num_classes, 1024, 1024]
         pred_logits = outputs['pred_mask_512'].squeeze(0)
         pred_mask = (pred_logits>0).detach()
-        mask_512[mask_512 == 0] = 255
+        # mask_512[mask_512 == 0] = 255
         test_evaluator.process(pred_mask, mask_512)
     
     metrics = test_evaluator.evaluate(len(val_loader))
@@ -105,7 +104,7 @@ if __name__ == "__main__":
     # get optimizer and lr_scheduler
     optimizer,lr_scheduler = get_train_strategy(model, args)
     # get evaluator
-    test_evaluator = IoUMetric(iou_metrics=['mIoU'])
+    test_evaluator = IoUMetric(iou_metrics=['mIoU','mFscore'], logger=logger)
     test_evaluator.dataset_meta = metainfo
 
     # train and val in each epoch
@@ -124,14 +123,20 @@ if __name__ == "__main__":
 
         # val
         metrics = val_one_epoch(model, val_dataloader)
+        if args.num_classes == 1:
+            mIoU = metrics['ret_metrics_class']['IoU'][1]
+        else:
+            mIoU = metrics['mIoU']
+        
+        del metrics['ret_metrics_class']
         logger.info(f'epoch: {epoch_num} ' + str(metrics) + '\n')
-        if metrics['mIoU'] > max_iou:
-            max_iou = metrics['mIoU']
+        if mIoU > max_iou:
+            max_iou = mIoU
             max_epoch = epoch_num
             save_mode_path = os.path.join(pth_save_dir, 'best_miou.pth')
             model.save_parameters(save_mode_path)
 
-        all_miou.append(metrics['mIoU'])
+        all_miou.append(mIoU)
         all_metrics.append(f'epoch: {epoch_num}' + str(metrics) + '\n')
     
     print(f'max_iou: {max_iou}, max_epoch: {max_epoch}')
@@ -156,7 +161,7 @@ python scripts/prompt_seg/main.py \
     --use_aug \
     --warmup_epoch 10 \
     --gamma 0.25 \
-    --train_sample_num 900 \
+    --train_sample_num 400 \
     --debug_mode
 
 use_embed

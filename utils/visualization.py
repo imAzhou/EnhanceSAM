@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 
 def show_mask(mask, ax, random_color=False):
     if random_color:
@@ -35,4 +36,35 @@ def show_anns(anns):
         color_mask = np.concatenate([np.random.random(3), [0.35]])
         img[m] = color_mask
     ax.imshow(img)
+
+def draw_pred(sampled_batch, pred_mask, pred_save_dir, coords_torch, box):
+    '''
+    Args:
+        pred_mask: tensor, shape is (h,w), h=w=1024
+        points: tensor, (num_points, 2), 2 is (x,y)
+        box: tensor, [x1,y1,x2,y2]
     
+    '''
+    image_name = sampled_batch['meta_info']['img_name'][0]
+    img = sampled_batch['input_image'][0].permute(1,2,0).numpy()
+    gt = sampled_batch['mask_1024'][0]
+
+    fig = plt.figure(figsize=(12,6))
+    ax = fig.add_subplot(121)
+    ax.imshow(img)
+    show_mask(gt.cpu(), ax)
+    ax.set_title('gt mask')
+
+    ax = fig.add_subplot(122)
+    ax.imshow(img)
+    show_mask(pred_mask.cpu(), ax)
+    if coords_torch is not None:
+        labels_torch = torch.ones(len(coords_torch))
+        show_points(coords_torch, labels_torch, ax)
+    if box is not None:
+        show_box(box, ax)
+    ax.set_title('pred mask')
+
+    plt.tight_layout()
+    plt.savefig(f'{pred_save_dir}/{image_name}')
+    plt.close()

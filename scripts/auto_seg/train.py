@@ -6,7 +6,7 @@ import torch.optim as optim
 from help_func.tools import set_seed,get_parameter_number
 
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
-from models.projector import ProjectorNet
+from models.auto_seg import ProjectorNet
 from utils.losses import DiceLoss, FocalLoss, BinaryDiceLoss
 from utils.logger import create_logger
 from tqdm import tqdm

@@ -115,7 +115,7 @@ class PromptSegNet(nn.Module):
             dense_prompt_embeddings = dense,
             inter_feature = inter_feature
         )
-        input_sam_size_masks = F.interpolate(
+        pred_mask_1024 = F.interpolate(
             low_res_masks,
             (1024, 1024),
             mode="bilinear",
@@ -123,7 +123,7 @@ class PromptSegNet(nn.Module):
         )
         outputs = {
             'pred_mask_512': low_res_masks,
-            'pred_mask_1024': input_sam_size_masks,
+            'pred_mask_1024': pred_mask_1024,
             'bs_point_box': prompts,
         }
 

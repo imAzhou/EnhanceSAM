@@ -25,8 +25,8 @@ class BuildingDataset(Dataset):
        ├── test
     '''
     METAINFO = dict(
-        classes=('building',),
-        palette=[[180, 120, 120]])
+        classes=('background','building',),
+        palette=[[255, 255, 255],[180, 120, 120]])
     
     def __init__(self,
                  data_root: str,
@@ -52,7 +52,6 @@ class BuildingDataset(Dataset):
             if train_sample_num > len(all_imgs):
                 raise ValueError("sample nums cannot surpass total image nums!")
             self.images = random.sample(all_imgs, train_sample_num)
-            print()
         else:
             self.images = all_imgs
         
@@ -97,7 +96,8 @@ class BuildingDataset(Dataset):
         else:
             aug_img, aug_gt = self.gene_origin_data(image, image_mask)
         
-        # self._showimg_and_mask(aug_img, aug_gt)
+        # if torch.sum(aug_gt) > 0:
+        #     self._showimg_and_mask(aug_img, aug_gt)
 
         for size in self.mask_resize_sizes:
             transform = ResizeLongestSide(size)
