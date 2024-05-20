@@ -103,10 +103,35 @@ class PromptSegNet(nn.Module):
         print('='*59)
 
     def forward(self, sampled_batch: dict):
-        mask_1024 = sampled_batch['mask_1024']
+        mask_1024 = sampled_batch['mask_1024']  # shape: (bs,h,w)
         bs_image_embedding,inter_feature = self.gene_img_embed(sampled_batch)
-        sparse,dense,prompts = self.gene_prompt_embed(bs_image_embedding, mask_1024)
 
+        all_cls_logits,all_cls_prompts = [],[]
+        for cls_i in range(self.num_classes):
+            mask_1024_cls_i = mask_1024 == (1 if self.num_classes == 1 else cls_i)
+            low_logits, prompts = self.forward_single_class(bs_image_embedding,inter_feature, mask_1024_cls_i)
+            low_logits_cls_i = low_logits[:,cls_i,::]
+            all_cls_logits.append(low_logits_cls_i)
+            all_cls_prompts.append(prompts)
+
+        # all_cls_logits.shape: (bs, num_class, h ,w)
+        all_cls_logits = torch.cat(all_cls_logits, dim=0).permute(1,0,2,3).contiguous()
+        all_cls_logits_1024 = F.interpolate(
+            all_cls_logits,
+            (1024, 1024),
+            mode="bilinear",
+            align_corners=False,
+        )
+        outputs = {
+            'pred_mask_512': all_cls_logits,
+            'pred_mask_1024': all_cls_logits_1024,
+            'bs_point_box': all_cls_prompts,
+        }
+
+        return outputs
+    
+    def forward_single_class(self, bs_image_embedding, inter_feature, mask_1024_cls_i):
+        sparse,dense,prompts = self.gene_prompt_embed(bs_image_embedding, mask_1024_cls_i)
         image_pe = self.prompt_encoder.get_dense_pe()
         low_res_masks = self.mask_decoder(
             image_embeddings = bs_image_embedding,
@@ -115,22 +140,9 @@ class PromptSegNet(nn.Module):
             dense_prompt_embeddings = dense,
             inter_feature = inter_feature
         )
-        pred_mask_1024 = F.interpolate(
-            low_res_masks,
-            (1024, 1024),
-            mode="bilinear",
-            align_corners=False,
-        )
-        outputs = {
-            'pred_mask_512': low_res_masks,
-            'pred_mask_1024': pred_mask_1024,
-            'bs_point_box': prompts,
-        }
+        return low_res_masks, prompts
 
-        return outputs
-    
-    def gene_prompt_embed(self, bs_image_embedding, label_mask):
-        
+    def gene_prompt_embed(self, bs_image_embedding, label_mask):    
         bs_sparse_embedding = []
         bs_point_box = []
         for single_label in label_mask:

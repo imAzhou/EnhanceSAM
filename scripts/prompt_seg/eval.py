@@ -1,12 +1,16 @@
 import os
 import torch
 import argparse
-from utils import set_seed, draw_pred
+from utils import set_seed, draw_pred,draw_multi_cls_pred
 from models.prompt_seg import PromptSegNet
 from tqdm import tqdm
 from datasets.gene_dataloader import gene_loader
 from utils.iou_metric import IoUMetric
 import numpy as np
+from utils.local_visualizer import SegLocalVisualizer
+import mmcv
+from utils.data_structure import SegDataSample
+from mmengine.structures import PixelData
 
 parser = argparse.ArgumentParser()
 
@@ -36,21 +40,31 @@ def val_one_epoch(model: PromptSegNet, val_loader):
         
         mask_512 = sampled_batch['mask_512'].to(device) # shape: [bs, 512, 512]
         outputs = model(sampled_batch)
-        # shape: [num_classes, 1024, 1024]
+        # shape: [num_classes, h, w]
         pred_logits = outputs['pred_mask_512'].squeeze(0)
-        pred_mask = (pred_logits>0).detach()
+        if model.num_classes == 1:
+            pred_mask = (pred_logits>0).detach()
+        else:
+            pred_mask = pred_logits.argmax(dim=0, keepdim=True).cpu()
+        test_evaluator.process(pred_mask, mask_512)
 
         if args.visual_pred and i_batch % 50 == 0:
-            pred_mask_1024 = (outputs['pred_mask_1024'].squeeze(0) > 0).detach()
-            point_box = outputs['bs_point_box'][0]
-            coords_torch = None
-            if point_box['point'] is not None:
-                coords_torch = torch.as_tensor(np.array([point_box['point']]), dtype=torch.float)
-            draw_pred(sampled_batch, pred_mask_1024[0], pred_save_dir, coords_torch, point_box['box'])
-
-        # mask_512[mask_512 == 0] = 255
-        test_evaluator.process(pred_mask, mask_512)
-        
+            pred_logits_1024 = outputs['pred_mask_1024'].squeeze(0)
+            if model.num_classes == 1:
+                pred_mask_1024 = (pred_logits_1024 > 0).detach()
+                point_box = outputs['bs_point_box'][0]
+                coords_torch = None
+                if point_box['point'] is not None:
+                    coords_torch = torch.as_tensor(np.array([point_box['point']]), dtype=torch.float)
+                draw_pred(sampled_batch, pred_mask_1024[0], pred_save_dir, coords_torch, point_box['box'])
+            else:
+                pred_mask_1024 = pred_logits_1024.argmax(dim=0, keepdim=True).detach()
+                point_box = outputs['bs_point_box'][0]
+                coords_torch = None
+                if point_box['point'] is not None:
+                    coords_torch = torch.as_tensor(np.array([point_box['point']]), dtype=torch.float)
+                draw_multi_cls_pred(sampled_batch, pred_mask_1024[0], pred_save_dir, metainfo['palette'],coords_torch, point_box['box'])
+    
     metrics = test_evaluator.evaluate(len(val_loader))
     return metrics
 
@@ -84,6 +98,11 @@ if __name__ == "__main__":
     if args.visual_pred:
         pred_save_dir = f'{args.result_save_dir}/vis_pred'
         os.makedirs(pred_save_dir, exist_ok = True)
+        seg_local_visualizer = SegLocalVisualizer(
+            save_dir = pred_save_dir,
+            classes = metainfo['classes'],
+            palette = metainfo['palette'],
+        )
     
     # get evaluator
     test_evaluator = IoUMetric(iou_metrics=['mIoU','mFscore'])
