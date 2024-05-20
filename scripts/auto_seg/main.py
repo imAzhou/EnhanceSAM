@@ -276,17 +276,18 @@ if __name__ == "__main__":
         f.write(str(all_miou))
 
 '''
-scripts/auto_seg/main.py \
-    --server_name zucc \
+python scripts/auto_seg/main.py \
+    --server_name hz \
     --max_epochs 6 \
-    --dataset_name whu \
+    --dataset_name inria \
     --n_per_side 64 \
     --points_per_batch 256 \
-    --train_sample_num 400 \
     --loss_type bce_bdice \
     --base_lr 0.0001 \
     --warmup_epoch 5 \
     --use_embed \
+    --train_sample_num 400 \
+    --device cuda:1
     --use_aug \
     --debug_mode
 '''
