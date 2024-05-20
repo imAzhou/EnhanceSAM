@@ -1,7 +1,7 @@
 import os
 import torch
 import argparse
-from utils import set_seed, get_logger, get_train_strategy,draw_pred
+from utils import set_seed, draw_pred
 from models.prompt_seg import PromptSegNet
 from tqdm import tqdm
 from datasets.gene_dataloader import gene_loader
@@ -15,7 +15,6 @@ parser.add_argument('result_save_dir', type=str)
 parser.add_argument('ckpt_path', type=str)
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
 parser.add_argument('--device', type=str, default='cuda:0')
-parser.add_argument('--debug_mode', action='store_true', help='If activated, log dirname prefis is debug')
 
 # about dataset
 parser.add_argument('--server_name', type=str)
