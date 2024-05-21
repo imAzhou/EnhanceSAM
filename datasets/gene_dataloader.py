@@ -13,7 +13,7 @@ root_dir = dict(
 dataset_config = dict(
     whu = 'WHU-Building',
     inria = 'InriaBuildingDataset',
-    lovada = 'LoveDA'
+    loveda = 'LoveDA'
 )
 
 def gene_loader(
