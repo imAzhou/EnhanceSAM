@@ -48,7 +48,7 @@ def gene_loader(
         train_dataset,
         batch_size = train_bs,
         shuffle = True,
-        num_workers = 0,
+        num_workers = 8,
         drop_last = True,
         # worker_init_fn=worker_init_fn
     )

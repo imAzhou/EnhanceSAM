@@ -24,8 +24,8 @@ def get_logger(record_save_dir, model, args, logger_name):
     # save log file
     logger = create_logger(f'{files_save_dir}/result.log', logger_name)
     parameter_cnt = get_parameter_number(model)
-    logger.info(f'网络总更新参数量：{parameter_cnt}')
-    logger.info(f'网络更新参数为：')
+    logger.info(f'total params: {parameter_cnt}')
+    logger.info(f'update params:')
     for name,parameters in model.named_parameters():
         if parameters.requires_grad:
             logger.info(name)
