@@ -1,11 +1,11 @@
 import logging
 
-def create_logger(logger_file_name):
+def create_logger(logger_file_name, logger_name):
     """
     :param logger_file_name:
     :return:
     """
-    logger = logging.getLogger()         # 设定日志对象
+    logger = logging.getLogger(logger_name)         # 设定日志对象
     logger.setLevel(logging.INFO)        # 设定日志等级
 
     file_handler = logging.FileHandler(logger_file_name)   # 文件输出

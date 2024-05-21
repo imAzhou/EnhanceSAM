@@ -38,11 +38,13 @@ parser.add_argument('--save_each_epoch', action='store_true')
 
 args = parser.parse_args()
 
-def train_one_epoch(model: PromptSegNet, train_loader, optimizer):
+def train_one_epoch(model: PromptSegNet, train_loader, optimizer, logger):
 
     model.train()
     len_loader = len(train_loader)
     for i_batch, sampled_batch in enumerate(tqdm(train_loader, ncols=70)):
+        if i_batch > 5:
+            break
         mask_512 = sampled_batch['mask_512'].to(device) # shape: [bs, 512, 512]       
         outputs = model(sampled_batch)
         pred_logits = outputs['pred_mask_512']  # shape: [bs, num_classes, 512, 512]
@@ -52,29 +54,29 @@ def train_one_epoch(model: PromptSegNet, train_loader, optimizer):
         loss.backward()
         optimizer.step()
         
-        logger.info(f'iteration {i_batch}/{len_loader}: loss: {loss.item():.6f}')
+        logger.info(f'iteration {i_batch+1}/{len_loader}: loss: {loss.item():.6f}')
 
-def val_one_epoch(model: PromptSegNet, val_loader):
+def val_one_epoch(model: PromptSegNet, val_loader, test_evaluator:IoUMetric):
     
     model.eval()
     for i_batch, sampled_batch in enumerate(tqdm(val_loader, ncols=70)):
-        
+        if i_batch > 20:
+            break
         mask_512 = sampled_batch['mask_512'].to(device) # shape: [bs, 512, 512]
         outputs = model(sampled_batch)
         # shape: [num_classes, 1024, 1024]
         pred_logits = outputs['pred_mask_512'].squeeze(0)
-        pred_mask = (pred_logits>0).detach()
+        if model.num_classes == 1:
+            pred_mask = (pred_logits>0).detach()
+        else:
+            pred_mask = pred_logits.argmax(dim=0, keepdim=True).cpu()
         # mask_512[mask_512 == 0] = 255
         test_evaluator.process(pred_mask, mask_512)
     
     metrics = test_evaluator.evaluate(len(val_loader))
     return metrics
 
-if __name__ == "__main__":
-    set_seed(args.seed)
-    device = torch.device(args.device)
-    record_save_dir = 'logs/prompt_seg'
-    
+def main(logger_name):
     # register model
     sam_ckpt = dict(
         zucc = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth',
@@ -88,18 +90,8 @@ if __name__ == "__main__":
                 sam_ckpt = sam_ckpt[args.server_name],
                 device = device
             ).to(device)
-    # data loader
-    train_loader,val_dataloader,metainfo = gene_loader(
-        server_name = args.server_name,
-        data_tag = args.dataset_name,
-        use_aug = args.use_aug,
-        use_embed = args.use_embed,
-        train_sample_num = args.train_sample_num,
-        train_bs = args.batch_size,
-        val_bs = 1
-    )
     # create logger
-    logger,files_save_dir = get_logger(record_save_dir, model, args)
+    logger,files_save_dir = get_logger(record_save_dir, model, args, logger_name)
     pth_save_dir = f'{files_save_dir}/checkpoints'
     # get optimizer and lr_scheduler
     optimizer,lr_scheduler = get_train_strategy(model, args)
@@ -114,7 +106,7 @@ if __name__ == "__main__":
         # train
         current_lr = optimizer.param_groups[0]["lr"]
         logger.info(f"epoch: {epoch_num}, learning rate: {current_lr:.6f}")
-        train_one_epoch(model, train_loader, optimizer)
+        train_one_epoch(model, train_loader, optimizer, logger)
         lr_scheduler.step()
         if args.save_each_epoch:
             save_mode_path = os.path.join(pth_save_dir, 'epoch_' + str(epoch_num) + '.pth')
@@ -122,7 +114,7 @@ if __name__ == "__main__":
             logger.info(f"save model to {save_mode_path}")
 
         # val
-        metrics = val_one_epoch(model, val_dataloader)
+        metrics = val_one_epoch(model, val_dataloader, test_evaluator)
         if args.num_classes == 1:
             mIoU = metrics['ret_metrics_class']['IoU'][1]
         else:
@@ -146,6 +138,29 @@ if __name__ == "__main__":
         f.writelines(all_metrics)
         f.write(f'\nmax_iou: {max_iou}, max_epoch: {max_epoch}\n')
         f.write(str(all_miou))
+        
+
+if __name__ == "__main__":
+    set_seed(args.seed)
+    device = torch.device(args.device)
+    record_save_dir = 'logs/prompt_seg'
+    
+    # data loader
+    train_loader,val_dataloader,metainfo = gene_loader(
+        server_name = args.server_name,
+        data_tag = args.dataset_name,
+        use_aug = args.use_aug,
+        use_embed = args.use_embed,
+        train_sample_num = args.train_sample_num,
+        train_bs = args.batch_size,
+        val_bs = 1
+    )
+
+    for loss_type in ['loss_masks','focal_bdice','bce_bdice']:
+        args.loss_type = loss_type
+        main(loss_type)
+
+    
 
 '''
 use_inner_feat
@@ -167,15 +182,16 @@ python scripts/prompt_seg/main.py \
 use_embed
 python scripts/prompt_seg/main.py \
     --server_name zucc \
-    --max_epochs 12 \
+    --max_epochs 1 \
     --dataset_name whu \
     --use_embed \
     --batch_size 16 \
     --semantic_module conv \
-    --loss_type bce_bdice \
-    --base_lr 0.0001 \
+    --loss_type loss_masks \
+    --base_lr 0.005 \
     --warmup_epoch 10 \
-    --gamma 0.25
+    --gamma 0.5 \
+    --debug_mode \
     --device cuda:1
     --train_sample_num 900 \
     --debug_mode

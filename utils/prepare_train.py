@@ -5,7 +5,7 @@ import torch.optim as optim
 from utils.logger import create_logger
 from utils import get_parameter_number
 
-def get_logger(record_save_dir, model, args):
+def get_logger(record_save_dir, model, args, logger_name):
     # set record files
     save_dir_date = time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime())
     prefix = 'debug_' if args.debug_mode else ''
@@ -22,7 +22,7 @@ def get_logger(record_save_dir, model, args):
     with open(config_file, 'w') as f:
         f.writelines(config_items)
     # save log file
-    logger = create_logger(f'{files_save_dir}/result.log')
+    logger = create_logger(f'{files_save_dir}/result.log', logger_name)
     parameter_cnt = get_parameter_number(model)
     logger.info(f'网络总更新参数量：{parameter_cnt}')
     logger.info(f'网络更新参数为：')

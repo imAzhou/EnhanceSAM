@@ -108,14 +108,14 @@ class PromptSegNet(nn.Module):
 
         all_cls_logits,all_cls_prompts = [],[]
         for cls_i in range(self.num_classes):
-            mask_1024_cls_i = mask_1024 == (1 if self.num_classes == 1 else cls_i)
+            mask_1024_cls_i = (mask_1024 == (1 if self.num_classes == 1 else cls_i)).to(torch.uint8)
             low_logits, prompts = self.forward_single_class(bs_image_embedding,inter_feature, mask_1024_cls_i)
-            low_logits_cls_i = low_logits[:,cls_i,::]
+            low_logits_cls_i = low_logits[:,cls_i,::].unsqueeze(1)
             all_cls_logits.append(low_logits_cls_i)
             all_cls_prompts.append(prompts)
 
         # all_cls_logits.shape: (bs, num_class, h ,w)
-        all_cls_logits = torch.cat(all_cls_logits, dim=0).permute(1,0,2,3).contiguous()
+        all_cls_logits = torch.cat(all_cls_logits, dim=1)
         all_cls_logits_1024 = F.interpolate(
             all_cls_logits,
             (1024, 1024),
@@ -125,7 +125,7 @@ class PromptSegNet(nn.Module):
         outputs = {
             'pred_mask_512': all_cls_logits,
             'pred_mask_1024': all_cls_logits_1024,
-            'bs_point_box': all_cls_prompts,
+            'bs_point_box': all_cls_prompts,    # [[{point:[[x1,y1],[x1,y1]], box:[x1,y1,x2,y2]},{}],[],...,[]]
         }
 
         return outputs
