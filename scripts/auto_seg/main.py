@@ -105,8 +105,12 @@ def train_one_epoch(model: AutoSegNet, train_loader, optimizer):
                 random_pos_index = np.random.choice(positive_coords_idx, size=positive_num, replace=False)
             else:
                 random_pos_index = positive_coords_idx
-            random_neg_index = np.random.choice(negative_coords_idx, size=negative_num, replace=False)
-
+            
+            if negative_coords_idx.shape[0] > negative_num:
+                random_neg_index = np.random.choice(negative_coords_idx, size=negative_num, replace=False)
+            else:
+                random_neg_index = negative_coords_idx
+            
             ps_pos = [ps[idx] for idx in random_pos_index]
             ps_neg = [ps[idx] for idx in random_neg_index]
             ps = np.array([*ps_pos, *ps_neg])
@@ -118,10 +122,10 @@ def train_one_epoch(model: AutoSegNet, train_loader, optimizer):
             sam_pred_mask_256 = pred_sam_logits.flatten(0, 1) > 0
             seg_gt = sam_pred_mask_256 & gt_mask_256   # shape: (points_per_batch, 256, 256)
             
-        loss = cls_loss(pred_logits=pred_cls_logits, target_masks=seg_gt, args=args)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            loss = cls_loss(pred_logits=pred_cls_logits, target_masks=seg_gt, args=args)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
         logger.info(f'iteration {i_batch}/{len_loader}: loss: {loss.item():.6f}')
 
 def val_one_epoch(model: AutoSegNet, val_loader):
@@ -302,6 +306,7 @@ python scripts/auto_seg/main.py \
     --base_lr 0.0001 \
     --warmup_epoch 5 \
     --use_embed \
+    --sample_point_train
     --train_sample_num 400 \
     --device cuda:1
     --use_aug \
