@@ -43,10 +43,18 @@ def train_one_epoch(model: PromptSegNet, train_loader, optimizer, logger):
     model.train()
     len_loader = len(train_loader)
     for i_batch, sampled_batch in enumerate(tqdm(train_loader, ncols=70)):
-        mask_512 = sampled_batch['mask_512'].to(device) # shape: [bs, 512, 512]       
-        outputs = model(sampled_batch)
-        pred_logits = outputs['pred_mask_512']  # shape: [bs, num_classes, 512, 512]
-        loss = cls_loss(pred_logits=pred_logits, target_masks=mask_512, args=args)
+        mask_512 = sampled_batch['mask_512'].to(device) # shape: [bs, 512, 512]
+        mask_1024 = sampled_batch['mask_1024'] # shape: [bs, 1024, 1024]
+        bs_image_embedding,inter_feature = model.gene_img_embed(sampled_batch)
+        loss = 0.
+        for cls_i in range(model.num_classes):
+            mask_512_cls_i = (mask_512 == (1 if model.num_classes == 1 else cls_i)).to(torch.uint8)
+            mask_1024_cls_i = (mask_1024 == (1 if model.num_classes == 1 else cls_i)).to(torch.uint8)
+            # low_logits.shape: (bs, num_cls, 512, 512)
+            low_logits, _ = model.forward_single_class(bs_image_embedding,inter_feature, mask_1024_cls_i)
+            # cls_low_logits.shape: (bs, 1, 512, 512)
+            cls_low_logits = low_logits[:, cls_i, ::].unsqueeze(1)
+            loss += cls_loss(pred_logits=cls_low_logits, target_masks=mask_512_cls_i, args=args)
         
         optimizer.zero_grad()
         loss.backward()
@@ -59,9 +67,19 @@ def val_one_epoch(model: PromptSegNet, val_loader, test_evaluator:IoUMetric):
     model.eval()
     for i_batch, sampled_batch in enumerate(tqdm(val_loader, ncols=70)):
         mask_512 = sampled_batch['mask_512'].to(device) # shape: [bs, 512, 512]
-        outputs = model(sampled_batch)
-        # shape: [num_classes, 1024, 1024]
-        pred_logits = outputs['pred_mask_512'].squeeze(0)
+        mask_1024 = sampled_batch['mask_1024'] # shape: [bs, 1024, 1024]
+        bs_image_embedding,inter_feature = model.gene_img_embed(sampled_batch)
+        all_cls_logits = []
+        for cls_i in range(model.num_classes):
+            mask_1024_cls_i = (mask_1024 == (1 if model.num_classes == 1 else cls_i)).to(torch.uint8)
+            # low_logits.shape: (bs, num_cls, 512, 512)
+            low_logits, _ = model.forward_single_class(bs_image_embedding,inter_feature, mask_1024_cls_i)
+            # cls_low_logits.shape: (bs, 1, 512, 512)
+            cls_low_logits,_ = torch.max(low_logits, dim = 1, keepdim=True)
+            all_cls_logits.append(cls_low_logits)
+        
+        # pred_logits.shape: (bs, num_cls, 512, 512)
+        pred_logits = torch.cat(all_cls_logits, dim=1)
         if model.num_classes == 1:
             pred_mask = (pred_logits>0).detach()
         else:
@@ -182,17 +200,16 @@ python scripts/prompt_seg/main.py \
 
 use_embed
 python scripts/prompt_seg/main.py \
-    --server_name zucc \
-    --max_epochs 30 \
+    --server_name hz \
+    --max_epochs 20 \
     --dataset_name inria \
-    --num_classes 1 \
     --use_embed \
     --batch_size 16 \
     --semantic_module conv \
     --loss_type loss_masks \
     --base_lr 0.005 \
-    --warmup_epoch 10 \
-    --gamma 0.9 \
+    --warmup_epoch 15 \
+    --gamma 0.5 \
     --device cuda:1
     --debug_mode \
     
