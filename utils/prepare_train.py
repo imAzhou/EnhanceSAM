@@ -24,8 +24,8 @@ def get_logger(record_save_dir, model, args, logger_name):
     # save log file
     logger = create_logger(f'{files_save_dir}/result.log', logger_name)
     parameter_cnt = get_parameter_number(model)
-    logger.info(f'网络总更新参数量：{parameter_cnt}')
-    logger.info(f'网络更新参数为：')
+    logger.info(f'total params: {parameter_cnt}')
+    logger.info(f'update params:')
     for name,parameters in model.named_parameters():
         if parameters.requires_grad:
             logger.info(name)
@@ -37,7 +37,9 @@ def get_train_strategy(model, args):
         if epoch < args.warmup_epoch:
             return (epoch + 1) / args.warmup_epoch  # warm up 阶段线性增加
         else:
-            return args.gamma ** (epoch-args.warmup_epoch + 1) # warm up 后每个 epoch 除以 2
+            # [base_lr*(args.gamma ** (epoch-args.warmup_epoch + 1))]
+            # [0.005 *(0.9**i) for i in range(1,31)]
+            return args.gamma ** (epoch-args.warmup_epoch + 1)
     
     optimizer = optim.Adam(
         filter(lambda p: p.requires_grad, model.parameters()),

@@ -12,7 +12,7 @@ parser = argparse.ArgumentParser()
 # base args
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
 parser.add_argument('--device', type=str, default='cuda:0')
-parser.add_argument('--max_epochs', type=int, default=12, help='maximum epoch number to train and val')
+parser.add_argument('--max_epochs', type=int, default=1, help='maximum epoch number to train and val')
 parser.add_argument('--debug_mode', action='store_true', help='If activated, log dirname prefis is debug')
 
 # about dataset
@@ -43,8 +43,6 @@ def train_one_epoch(model: PromptSegNet, train_loader, optimizer, logger):
     model.train()
     len_loader = len(train_loader)
     for i_batch, sampled_batch in enumerate(tqdm(train_loader, ncols=70)):
-        if i_batch > 5:
-            break
         mask_512 = sampled_batch['mask_512'].to(device) # shape: [bs, 512, 512]       
         outputs = model(sampled_batch)
         pred_logits = outputs['pred_mask_512']  # shape: [bs, num_classes, 512, 512]
@@ -60,8 +58,6 @@ def val_one_epoch(model: PromptSegNet, val_loader, test_evaluator:IoUMetric):
     
     model.eval()
     for i_batch, sampled_batch in enumerate(tqdm(val_loader, ncols=70)):
-        if i_batch > 20:
-            break
         mask_512 = sampled_batch['mask_512'].to(device) # shape: [bs, 512, 512]
         outputs = model(sampled_batch)
         # shape: [num_classes, 1024, 1024]
@@ -69,7 +65,7 @@ def val_one_epoch(model: PromptSegNet, val_loader, test_evaluator:IoUMetric):
         if model.num_classes == 1:
             pred_mask = (pred_logits>0).detach()
         else:
-            pred_mask = pred_logits.argmax(dim=0, keepdim=True).cpu()
+            pred_mask = pred_logits.argmax(dim=0, keepdim=True).detach()
         # mask_512[mask_512 == 0] = 255
         test_evaluator.process(pred_mask, mask_512)
     
@@ -77,6 +73,16 @@ def val_one_epoch(model: PromptSegNet, val_loader, test_evaluator:IoUMetric):
     return metrics
 
 def main(logger_name):
+    # data loader
+    train_loader,val_dataloader,metainfo = gene_loader(
+        server_name = args.server_name,
+        data_tag = args.dataset_name,
+        use_aug = args.use_aug,
+        use_embed = args.use_embed,
+        train_sample_num = args.train_sample_num,
+        train_bs = args.batch_size,
+        val_bs = 1
+    )
     # register model
     sam_ckpt = dict(
         zucc = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth',
@@ -141,24 +147,19 @@ def main(logger_name):
         
 
 if __name__ == "__main__":
-    set_seed(args.seed)
+    
     device = torch.device(args.device)
     record_save_dir = 'logs/prompt_seg'
+    # set_seed(args.seed)
+    # main(args.loss_type)
     
-    # data loader
-    train_loader,val_dataloader,metainfo = gene_loader(
-        server_name = args.server_name,
-        data_tag = args.dataset_name,
-        use_aug = args.use_aug,
-        use_embed = args.use_embed,
-        train_sample_num = args.train_sample_num,
-        train_bs = args.batch_size,
-        val_bs = 1
-    )
-
-    for loss_type in ['loss_masks','focal_bdice','bce_bdice']:
-        args.loss_type = loss_type
-        main(loss_type)
+    for idx,base_lr in enumerate([0.01, 0.005, 0.001, 0.0005, 0.0001]):
+        args.base_lr = base_lr
+        for loss_type in ['loss_masks','focal_bdice','bce_bdice']:
+            set_seed(args.seed)
+            args.loss_type = loss_type
+            logger_name = f'{loss_type}_{idx}'
+            main(logger_name)
 
     
 
@@ -182,17 +183,20 @@ python scripts/prompt_seg/main.py \
 use_embed
 python scripts/prompt_seg/main.py \
     --server_name zucc \
-    --max_epochs 1 \
-    --dataset_name whu \
+    --max_epochs 30 \
+    --dataset_name inria \
+    --num_classes 1 \
     --use_embed \
     --batch_size 16 \
     --semantic_module conv \
     --loss_type loss_masks \
     --base_lr 0.005 \
     --warmup_epoch 10 \
-    --gamma 0.5 \
-    --debug_mode \
+    --gamma 0.9 \
     --device cuda:1
+    --debug_mode \
+    
     --train_sample_num 900 \
     --debug_mode
 '''
+

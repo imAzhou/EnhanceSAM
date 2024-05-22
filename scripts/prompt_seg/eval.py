@@ -52,7 +52,7 @@ def val_one_epoch(model: PromptSegNet, val_loader):
             pred_logits_1024 = outputs['pred_mask_1024'].squeeze(0)
             if model.num_classes == 1:
                 pred_mask_1024 = (pred_logits_1024 > 0).detach()
-                point_box = outputs['bs_point_box'][0]
+                point_box = outputs['bs_point_box'][0][0]
                 coords_torch = None
                 if point_box['point'] is not None:
                     coords_torch = torch.as_tensor(np.array([point_box['point']]), dtype=torch.float)
@@ -116,13 +116,12 @@ if __name__ == "__main__":
 
 
 '''
-use_inner_feat
 python scripts/prompt_seg/eval.py \
-    best_results/prompt_seg/whu-400 \
-    best_results/prompt_seg/whu-400/checkpoints/best_miou.pth \
+    logs/prompt_seg/2024_05_20_23_41_55 \
+    logs/prompt_seg/2024_05_20_23_41_55/checkpoints/best_miou.pth \
     --server_name zucc \
     --dataset_name whu \
-    --use_inner_feat \
+    --use_embed \
     --semantic_module conv \
     --visual_pred
 '''

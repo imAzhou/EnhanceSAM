@@ -13,15 +13,15 @@ if __name__ == "__main__":
     device = torch.device('cuda:0')
     image_size = 1024
     batch_size = 1
-    # data_root = '/x22201018/datasets/RemoteSensingDatasets'
-    data_root = '/nfs/zly/datasets'
-    # dataset_name = 'WHU-Building'   # WHU-Building  InriaBuildingDataset
+    data_root = '/x22201018/datasets/RemoteSensingDatasets'
+    # data_root = '/nfs/zly/datasets'
+    # dataset_name = 'InriaBuildingDataset'   # WHU-Building  InriaBuildingDataset
     dataset_name = 'LoveDA'
 
     # register model
     sam = sam_model_registry['vit_h'](image_size = image_size,
-                                        checkpoint = 'checkpoints_sam/sam_vit_h_4b8939.pth',
-                                        # checkpoint = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth',
+                                        # checkpoint = 'checkpoints_sam/sam_vit_h_4b8939.pth',
+                                        checkpoint = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth',
                                     ).to(device)
     sam.eval()
 
@@ -48,7 +48,7 @@ if __name__ == "__main__":
             dataset,
             batch_size=batch_size,
             shuffle=True,
-            num_workers=0,
+            num_workers=8,
             drop_last=False)
 
         start = time.time()

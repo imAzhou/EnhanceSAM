@@ -281,7 +281,7 @@ class SemanticModule(nn.Module):
             #     nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=3, padding='same'),
             # )
             self.local_conv = nn.ModuleList()
-            self.depth = 1
+            self.depth = 2
             for i in range(self.depth):
                 block = nn.Sequential(
                     nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=1),

@@ -13,7 +13,7 @@ root_dir = dict(
 dataset_config = dict(
     whu = 'WHU-Building',
     inria = 'InriaBuildingDataset',
-    lovada = 'LoveDA'
+    loveda = 'LoveDA'
 )
 
 def gene_loader(
@@ -48,7 +48,7 @@ def gene_loader(
         train_dataset,
         batch_size = train_bs,
         shuffle = True,
-        num_workers = 0,
+        num_workers = 8,
         drop_last = True,
         # worker_init_fn=worker_init_fn
     )
@@ -60,7 +60,7 @@ def gene_loader(
         val_dataset,
         batch_size = val_bs,
         shuffle = True,
-        num_workers = 0,
+        num_workers = 8,
         drop_last = True,
         # worker_init_fn=worker_init_fn
     )
