@@ -93,14 +93,14 @@ class TwoWayTransformer(nn.Module):
         
         # Apply transformer blocks and final layernorm
         # tow_way_keys = []
-        for layer in self.layers:
+        for i,layer in enumerate(self.layers):
             queries, keys = layer(
                 queries=queries,
                 keys=keys,
                 query_pe=point_embedding,
                 key_pe=image_pe,
             )
-            if inter_feat_c256 is not None:
+            if inter_feat_c256 is not None and i == 0:
                 keys += inter_feat_c256
         
         # Apply the final attention layer from the points to the image
@@ -275,12 +275,19 @@ class SemanticModule(nn.Module):
         self.local_conv = nn.ModuleList()
         self.sm_depth = sm_depth
         for i in range(self.sm_depth):
-            block = nn.Sequential(
+            # H/2, W/2, C*2
+            downsample_block = nn.Sequential(
                 nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=1),
-                nn.Conv2d(embedding_dim*2, embedding_dim*2, kernel_size=3, groups=embedding_dim*2, padding='same'),
+                nn.Conv2d(embedding_dim*2, embedding_dim*2, kernel_size=3, groups=embedding_dim*2, stride=2),
                 nn.ReLU(),
                 nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=1),
             )
+            # upsample_block = nn.Sequential(
+            #     nn.ConvTranspose2d(embed_dim, transformer_dim, kernel_size=2, stride=2),
+            #     LayerNorm2d(transformer_dim),
+            #     nn.GELU(), 
+            #     nn.ConvTranspose2d(transformer_dim, transformer_dim // 8, kernel_size=2, stride=2)
+            # )
             self.local_conv.append(block)
         
     def forward(self, tokens: Tensor) -> Tensor:

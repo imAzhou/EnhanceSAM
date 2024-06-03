@@ -43,50 +43,8 @@ parser.add_argument('--save_each_epoch', action='store_true')
 
 args = parser.parse_args()
 
-def drwa_mask(image_name, img, gt, sam_seg, credible_p, credible_n, coords_torch):
-    '''
-    绘制四宫格，从上至下从左至右分别是：
-        整图GT，选点及sam分割的块，
-        可信前景区域，可信背景区域
-    Args:
-        img: np array, shape is (h,w,c)
-        gt, sam_seg, credible_p, credible_n: tensor, shape is (h,w), value is 0/1
-        coords_torch: (num_points, 2), 2 is (x,y)
-    '''
-    pred_save_dir = 'visual_result/projector'
-    os.makedirs(pred_save_dir, exist_ok=True)
-    labels_torch = torch.ones(len(coords_torch))
 
-    fig = plt.figure(figsize=(12,12))
-    ax = fig.add_subplot(221)
-    ax.imshow(img)
-    show_mask(gt.cpu(), ax)
-    show_points(coords_torch, labels_torch, ax)
-    ax.set_title('pred mask')
-
-    ax = fig.add_subplot(222)
-    ax.imshow(img)
-    show_mask(sam_seg.cpu(), ax)
-    show_points(coords_torch, labels_torch, ax)
-    ax.set_title('SAM seg')
-
-    ax = fig.add_subplot(223)
-    ax.imshow(img)
-    show_mask(credible_p.cpu(), ax)
-    show_points(coords_torch, labels_torch, ax)
-    ax.set_title('credible positive region')
-
-    ax = fig.add_subplot(224)
-    ax.imshow(img)
-    show_mask(credible_n.cpu(), ax)
-    show_points(coords_torch, labels_torch, ax)
-    ax.set_title('credible negative region')
-
-    plt.tight_layout()
-    plt.savefig(f'{pred_save_dir}/{image_name}')
-    plt.close()
-
-def train_one_epoch(model: AutoSegNet, train_loader, optimizer):
+def train_one_epoch(model: AutoSegNet, train_loader, optimizer, logger):
     
     model.train()
     len_loader = len(train_loader)
@@ -98,7 +56,7 @@ def train_one_epoch(model: AutoSegNet, train_loader, optimizer):
         if args.sample_point_train:
             mask_1024 = sampled_batch['mask_1024'][0]   # mask_1024.shape: (1024,1024)
             ps_pos_neg = np.array([mask_1024[point_y,point_x] for point_x,point_y in ps.astype(int)])
-            positive_num,negative_num = 128,256
+            positive_num,negative_num = 256,512
             positive_coords_idx, = np.nonzero(ps_pos_neg)
             negative_coords_idx, = np.where(ps_pos_neg == 0)
             if positive_coords_idx.shape[0] > positive_num:
@@ -126,9 +84,11 @@ def train_one_epoch(model: AutoSegNet, train_loader, optimizer):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        logger.info(f'iteration {i_batch}/{len_loader}: loss: {loss.item():.6f}')
+        
+        if (i_batch+1) % 20 == 0:
+            logger.info(f'iteration {i_batch+1}/{len_loader}: loss: {loss.item():.6f}')
 
-def val_one_epoch(model: AutoSegNet, val_loader):
+def val_one_epoch(model: AutoSegNet, val_loader, test_evaluator: IoUMetric):
     
     model.eval()
     all_data_precision_p,all_data_precision_n = 0., 0.
@@ -219,11 +179,7 @@ def val_one_epoch(model: AutoSegNet, val_loader):
     })
     return metrics
 
-if __name__ == "__main__":
-    set_seed(args.seed)
-    device = torch.device(args.device)
-    record_save_dir = 'logs/auto_seg'
-    
+def main(logger_name):
     # register model
     sam_ckpt = dict(
         zucc = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth',
@@ -248,7 +204,7 @@ if __name__ == "__main__":
         val_bs = 1
     )
     # create logger
-    logger,files_save_dir = get_logger(record_save_dir, model, args)
+    logger,files_save_dir = get_logger(record_save_dir, model, args, logger_name)
     pth_save_dir = f'{files_save_dir}/checkpoints'
     # get optimizer and lr_scheduler
     optimizer,lr_scheduler = get_train_strategy(model, args)
@@ -261,8 +217,9 @@ if __name__ == "__main__":
     max_iou,max_epoch = 0,0
     for epoch_num in range(args.max_epochs):
         # train
-        print("epoch: ",epoch_num, "  learning rate: ", optimizer.param_groups[0]["lr"])
-        train_one_epoch(model, train_loader, optimizer)
+        current_lr = optimizer.param_groups[0]["lr"]
+        logger.info(f"epoch: {epoch_num}, learning rate: {current_lr:.6f}")
+        train_one_epoch(model, train_loader, optimizer, logger)
         lr_scheduler.step()
         if args.save_each_epoch:
             save_mode_path = os.path.join(pth_save_dir, 'epoch_' + str(epoch_num) + '.pth')
@@ -270,7 +227,7 @@ if __name__ == "__main__":
             logger.info(f"save model to {save_mode_path}")
 
         # val
-        metrics = val_one_epoch(model, val_dataloader)
+        metrics = val_one_epoch(model, val_dataloader, test_evaluator)
         if args.num_classes == 1:
             mIoU = metrics['ret_metrics_class']['IoU'][1]
         else:
@@ -295,19 +252,38 @@ if __name__ == "__main__":
         f.write(f'\nmax_iou: {max_iou}, max_epoch: {max_epoch}\n')
         f.write(str(all_miou))
 
+
+if __name__ == "__main__":
+    set_seed(args.seed)
+    device = torch.device(args.device)
+    record_save_dir = 'logs/auto_seg/inira_use_900'
+    # set_seed(args.seed)
+    # main(args.loss_type)
+    
+    for idx,base_lr in enumerate([0.001, 0.0005, 0.0001]):
+        args.base_lr = base_lr
+        for loss_type in ['loss_masks','focal_bdice','bce_bdice']:
+            set_seed(args.seed)
+            args.loss_type = loss_type
+            logger_name = f'{loss_type}_{idx}'
+            main(logger_name)
+    
+    
+
 '''
 python scripts/auto_seg/main.py \
-    --server_name hz \
-    --max_epochs 6 \
+    --server_name zucc \
+    --max_epochs 10 \
     --dataset_name inria \
     --n_per_side 64 \
     --points_per_batch 256 \
     --loss_type bce_bdice \
     --base_lr 0.0001 \
-    --warmup_epoch 5 \
+    --warmup_epoch 8 \
     --use_embed \
-    --sample_point_train
-    --train_sample_num 400 \
+    --train_sample_num 900 \
+    --save_each_epoch
+    --sample_point_train \
     --device cuda:1
     --use_aug \
     --debug_mode

@@ -10,7 +10,7 @@ from .augment import Pad, RandomFlip, PhotoMetricDistortion
 import torchvision.transforms as T
 
 
-class BuildingDataset(Dataset):
+class PannukeBinaryDataset(Dataset):
     '''
     memo: label is gt binary mask, foreground pixel value is 255, backround is 0
     when load to trian, gt mask foreground pixel value is 1, backround is 0
@@ -25,12 +25,12 @@ class BuildingDataset(Dataset):
        ├── test
     '''
     METAINFO = dict(
-        classes=('background','building',),
+        classes=('background','cell',),
         palette=[[255, 255, 255],[180, 120, 120]])
     
     def __init__(self,
                  data_root: str,
-                 mode:str,
+                 load_parts:list[int],
                  mask_resize_sizes:list[int] = [64, 256, 512],
                  use_embed: bool=False,
                  use_inner_feat: bool=False,
@@ -39,17 +39,17 @@ class BuildingDataset(Dataset):
         ) -> None:
         super().__init__()
 
-        assert mode in ['train','val','test'], \
-        'the mode must be in ["train","val","test"]'
-
         self.data_root = data_root
-        self.mode = mode
         self.use_embed = use_embed
         self.use_inner_feat = use_inner_feat
         self.use_aug = use_aug
         self.mask_resize_sizes = mask_resize_sizes
 
-        all_imgs = os.listdir(f'{data_root}/img_dir/{mode}')
+        all_imgs = []
+        for i in load_parts:
+            part_imgs = os.listdir(f'{data_root}/Part{i}/img_dir')
+            all_imgs.extend(part_imgs)
+        
         if train_sample_num > 0:
             if train_sample_num > len(all_imgs):
                 raise ValueError("sample nums cannot surpass total image nums!")
@@ -60,16 +60,17 @@ class BuildingDataset(Dataset):
     def __getitem__(self, index):
         filename = self.images[index].strip()
         img_name = filename.split('.')[0]
-        data = self.process_img_mask(img_name)
+        part_dir = filename.split('_')[0]
+        data = self.process_img_mask(img_name, part_dir)
 
         return data
 
     def __len__(self):
         return len(self.images)
     
-    def process_img_mask(self, img_name):
-        img_path = f'{self.data_root}/img_dir/{self.mode}/{img_name}.png'
-        image_mask_path = f'{self.data_root}/ann_dir/{self.mode}/{img_name}.png'
+    def process_img_mask(self, img_name, part_dir):
+        img_path = f'{self.data_root}/{part_dir}/img_dir/{img_name}.png'
+        image_mask_path = f'{self.data_root}/{part_dir}/ann_dir/{img_name}.png'
         data = {
             'meta_info':dict(
                 img_path = img_path, 
@@ -79,10 +80,10 @@ class BuildingDataset(Dataset):
         }
 
         if self.use_embed:
-            img_tensor_path = f'{self.data_root}/img_dir/{self.mode}_tensor/{img_name}.pt'
+            img_tensor_path = f'{self.data_root}/{part_dir}/img_tensor/{img_name}.pt'
             data['img_embed'] = torch.load(img_tensor_path)
             if self.use_inner_feat:
-                img_inner_tensor_path = f'{self.data_root}/img_dir/{self.mode}_tensor/{img_name}_inner_0.pt'
+                img_inner_tensor_path = f'{self.data_root}/{part_dir}/img_tensor/{img_name}_inner_0.pt'
                 data['img_embed_inner'] = torch.load(img_inner_tensor_path)
     
         # load image
@@ -93,7 +94,10 @@ class BuildingDataset(Dataset):
 
         # load image_mask
         image_mask = cv2.imread(image_mask_path, cv2.IMREAD_GRAYSCALE)
-        image_mask[image_mask == 255] = 1
+        image_mask_binary = np.zeros_like(image_mask).astype(np.uint8)
+        for idx in range(1,6):    # 1,2,3,4,5
+            image_mask_binary[image_mask == idx] = 1
+        image_mask = image_mask_binary
 
         # aug_img: tensor,(3, 1024, 1024)      aug_gt: tensor,(1024, 1024)
         if self.use_aug:
@@ -102,13 +106,14 @@ class BuildingDataset(Dataset):
             aug_img, aug_gt = self.gene_origin_data(image, image_mask)
         
         # if torch.sum(aug_gt) > 0:
-        #     self._showimg_and_mask(aug_img, aug_gt)
+        #   self._showimg_and_mask(aug_img, aug_gt,img_name)
 
         for size in self.mask_resize_sizes:
             transform = ResizeLongestSide(size)
             mask = transform.apply_image(aug_gt.numpy().astype(np.uint8),InterpolationMode.NEAREST)
-            data[f'mask_{size}'] = mask       
-        
+            data[f'mask_{size}'] = mask
+            data[f'mask_{size}_binary'] = np.zeros_like(mask).astype(np.uint8)
+            
         data['input_image'] = aug_img
         data['mask_1024'] = aug_gt
 
@@ -161,14 +166,3 @@ class BuildingDataset(Dataset):
         aug_gt = Pad()(torch.as_tensor(mask))
 
         return aug_img, aug_gt
-    
-    def _showimg_and_mask(self, aug_img, aug_gt):
-        import matplotlib.pyplot as plt
-        from utils.visualization import show_mask
-        
-        plt.figure(figsize=(11,11))
-        plt.imshow(aug_img.permute(1, 2, 0))
-        show_mask(aug_gt, plt.gca())
-        plt.axis('off')
-        plt.tight_layout()
-        plt.savefig('img_and_mask_origin.png')

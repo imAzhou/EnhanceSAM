@@ -142,5 +142,8 @@ def ce_dice(pred_logits, target_masks, args):
     dice_loss_fn = DiceLoss(args.num_classes, ignore_index = 255)
     ce_loss = ce_loss_fn(pred_logits, target_masks.long())
     dice_loss = dice_loss_fn(pred_logits,target_masks, softmax=True)
-    loss = (1 - args.dice_param) * ce_loss + args.dice_param * dice_loss
+    if torch.sum(target_masks != 255) != 0:
+        loss = (1 - args.dice_param) * ce_loss + args.dice_param * dice_loss
+    else:
+        loss = torch.tensor(0.0, requires_grad=True)
     return loss

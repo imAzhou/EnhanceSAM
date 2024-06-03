@@ -8,8 +8,7 @@ from utils import SegLocalVisualizer, SegDataSample, ResizeLongestSide
 from .augment import Pad, RandomFlip, PhotoMetricDistortion
 import torchvision.transforms as T
 from mmengine.structures import PixelData
-import mmcv
-from tqdm import tqdm
+
 
 class SSBaseDataset(Dataset):
     '''
@@ -91,7 +90,7 @@ class SSBaseDataset(Dataset):
         # load image
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        data['origin_image'] = torch.as_tensor(image).permute(2, 0, 1).contiguous()
+        # data['origin_image'] = torch.as_tensor(image).permute(2, 0, 1).contiguous()
         data['original_size'] = image.shape[:2]
 
         # load image_mask

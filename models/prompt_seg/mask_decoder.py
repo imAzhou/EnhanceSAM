@@ -157,11 +157,12 @@ class MaskDecoder(nn.Module):
         # Upscale mask embeddings and predict masks using the mask tokens
         src = src.transpose(1, 2).view(b, c, h, w)
         upscaled_embedding = self.output_upscaling(src)
-        # upscaled_inter_embedding = self.upscaling_inter_feat(inter_feature.permute(0, 3, 1, 2))
-        # fused_embedding = upscaled_embedding + upscaled_inter_embedding
-        # upscaled_embedding_2x = self.output_upscaling_2x(fused_embedding)
-        upscaled_embedding_2x = self.output_upscaling_2x(upscaled_embedding)
 
+        # if self.use_inner_feat:
+        #     upscaled_inter_embedding = self.upscaling_inter_feat(inter_feature.permute(0, 3, 1, 2))
+        #     upscaled_embedding += upscaled_inter_embedding
+        upscaled_embedding_2x = self.output_upscaling_2x(upscaled_embedding)
+        
         cls_hyper_in_list: List[torch.Tensor] = []
         for i in range(self.num_classes_outputs):
             cls_hyper_in_list.append(self.cls_mlps[i](cls_mask_tokens_out[:, i, :]))
