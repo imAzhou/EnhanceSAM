@@ -2,27 +2,22 @@ import os
 import time
 from torch.optim.lr_scheduler import LambdaLR
 import torch.optim as optim
-from utils.logger import create_logger
+from mmengine.logging import MMLogger
 from utils import get_parameter_number
+from mmengine.config import Config
 
-def get_logger(record_save_dir, model, args, logger_name):
+def get_logger(record_save_dir, model, print_cfg: Config, logger_name):
     # set record files
     save_dir_date = time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime())
-    prefix = 'debug_' if args.debug_mode else ''
-    files_save_dir = f'{record_save_dir}/{prefix}{save_dir_date}'
+    files_save_dir = f'{record_save_dir}/{save_dir_date}'
     os.makedirs(files_save_dir, exist_ok=True)
     pth_save_dir = f'{files_save_dir}/checkpoints'
     os.makedirs(pth_save_dir, exist_ok=True)
     # save config file
-    config_file = os.path.join(files_save_dir, 'config.txt')
-    config_items = []
-    for key, value in args.__dict__.items():
-        print(f'{key}: {value}')
-        config_items.append(f'{key}: {value}\n')
-    with open(config_file, 'w') as f:
-        f.writelines(config_items)
+    config_file = os.path.join(files_save_dir, 'config.py')
+    print_cfg.dump(config_file)
     # save log file
-    logger = create_logger(f'{files_save_dir}/result.log', logger_name)
+    logger = MMLogger.get_instance(logger_name, log_file=f'{files_save_dir}/result.log')
     parameter_cnt = get_parameter_number(model)
     logger.info(f'total params: {parameter_cnt}')
     logger.info(f'update params:')

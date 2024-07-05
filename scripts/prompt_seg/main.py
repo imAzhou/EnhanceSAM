@@ -1,7 +1,7 @@
 import os
 import torch
 import argparse
-from utils import set_seed, get_logger, get_train_strategy, cls_loss
+from utils import set_seed, get_logger, get_train_strategy, calc_loss
 from models.prompt_seg import PromptSegNet
 from tqdm import tqdm
 from datasets.gene_dataloader import gene_loader
@@ -13,11 +13,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
 parser.add_argument('--device', type=str, default='cuda:0')
 parser.add_argument('--max_epochs', type=int, default=1, help='maximum epoch number to train and val')
-parser.add_argument('--prompt_types', nargs='*', default=[], help='a list of prompt type,eg: box point')
 parser.add_argument('--debug_mode', action='store_true', help='If activated, log dirname prefis is debug')
 
 # about dataset
-parser.add_argument('--dataset_domain', type=str)
 parser.add_argument('--dataset_name', type=str, default='whu')
 parser.add_argument('--use_aug', action='store_true')
 parser.add_argument('--use_embed', action='store_true')
@@ -33,6 +31,8 @@ parser.add_argument('--use_inner_feat', action='store_true')
 parser.add_argument('--num_classes', type=int, default=1, help='output channel of network')
 
 # about train
+parser.add_argument('--train_prompt_type', type=str)
+parser.add_argument('--val_prompt_type', type=str)
 parser.add_argument('--loss_type', type=str)
 parser.add_argument('--base_lr', type=float, default=0.0001)
 parser.add_argument('--warmup_epoch', default=6, type=int)
@@ -48,27 +48,12 @@ def train_one_epoch(model: PromptSegNet, train_loader, optimizer, logger):
     len_loader = len(train_loader)
     for i_batch, sampled_batch in enumerate(tqdm(train_loader, ncols=70)):
         mask_512 = sampled_batch['mask_512'].to(device) # shape: [bs, 512, 512]
-        mask_1024 = sampled_batch['mask_1024'] # shape: [bs, 1024, 1024]
-        
-        bs_image_embedding,inter_feature = model.gene_img_embed(sampled_batch)
-        loss = 0.
-        if 'all_boxes' in args.prompt_types:
-            mask_1024_binary = sampled_batch['mask_1024_binary'] # shape: [bs, 1024, 1024]
-            # all_boxes_low_logits.shape: (k_boxes, num_cls, 512, 512)
-            all_boxes_low_logits, _ = model.forward_single_class(bs_image_embedding,inter_feature, mask_1024_binary)
-            # pred_logits.shape: (num_cls, 512, 512)
-            pred_logits,_ = torch.max(all_boxes_low_logits, dim=0)
-            pred_logits = pred_logits.unsqueeze(0)  # (1, num_cls, 512, 512)
-            loss = cls_loss(pred_logits=pred_logits, target_masks=mask_512, args=args)
-        else:
-            for cls_i in range(model.num_classes):
-                mask_512_cls_i = (mask_512 == (1 if model.num_classes == 1 else cls_i)).to(torch.uint8)
-                mask_1024_cls_i = (mask_1024 == (1 if model.num_classes == 1 else cls_i)).to(torch.uint8)
-                # low_logits.shape: (bs, num_cls, 512, 512)
-                low_logits, _ = model.forward_single_class(bs_image_embedding,inter_feature, mask_1024_cls_i)
-                # cls_low_logits.shape: (bs, 1, 512, 512)
-                cls_low_logits = low_logits[:, cls_i, ::].unsqueeze(1)
-                loss += cls_loss(pred_logits=cls_low_logits, target_masks=mask_512_cls_i, args=args)
+        outputs = model.forward_single_class(sampled_batch, args.train_prompt_type)
+        logits_512 = outputs['logits_512']  # logits_512.shape: (bs or k_prompt, 1, 512, 512)
+        bs1,bs2 = mask_512.shape[0], logits_512.shape[0]
+        if bs2 > bs1:
+            mask_512 = torch.repeat_interleave(mask_512, bs2, dim=0)
+        loss = calc_loss(pred_logits=logits_512, target_masks=mask_512, args=args)
         
         optimizer.zero_grad()
         loss.backward()
@@ -82,34 +67,9 @@ def val_one_epoch(model: PromptSegNet, val_loader, test_evaluator:IoUMetric):
     model.eval()
     for i_batch, sampled_batch in enumerate(tqdm(val_loader, ncols=70)):
         bs_mask_512 = sampled_batch['mask_512'].to(device) # shape: [bs, 512, 512]
-        mask_1024 = sampled_batch['mask_1024'] # shape: [bs, 1024, 1024]
-        bs_image_embedding,inter_feature = model.gene_img_embed(sampled_batch)
-        if 'all_boxes' in args.prompt_types:
-            mask_1024_binary = torch.zeros_like(mask_1024, dtype=torch.uint8)
-            for idx in range(5):    # 1,2,3,4,5
-                mask_1024_binary[mask_1024 == idx] = 1
-            # all_boxes_low_logits.shape: (k_boxes, num_cls, 512, 512)
-            all_boxes_low_logits, _ = model.forward_single_class(bs_image_embedding,inter_feature, mask_1024_binary)
-            # pred_logits.shape: (num_cls, 512, 512)
-            bs_pred_logits,_ = torch.max(all_boxes_low_logits, dim=0)
-            bs_pred_logits = bs_pred_logits.unsqueeze(0)    # (1, num_cls, 512, 512)
-        else:
-            all_cls_logits = []
-            for cls_i in range(model.num_classes):
-                mask_1024_cls_i = (mask_1024 == (1 if model.num_classes == 1 else cls_i)).to(torch.uint8)
-                # low_logits.shape: (bs, num_cls, 512, 512)
-                low_logits, _ = model.forward_single_class(bs_image_embedding,inter_feature, mask_1024_cls_i)
-                # cls_low_logits.shape: (bs, 1, 512, 512)
-                cls_low_logits,_ = torch.max(low_logits, dim = 1, keepdim=True)
-                all_cls_logits.append(cls_low_logits)
-        
-            # bs_pred_logits.shape: (bs, num_cls, 512, 512)
-            bs_pred_logits = torch.cat(all_cls_logits, dim=1)
-        
-        if model.num_classes == 1:
-            bs_pred_mask = (bs_pred_logits>0).detach()
-        else:
-            bs_pred_mask = bs_pred_logits.argmax(dim=1, keepdim=True).detach()
+        outputs = model.forward_single_class(sampled_batch, args.val_prompt_type)
+        logits_512 = outputs['logits_512']  # logits_512.shape: (bs, 1, 512, 512)   
+        bs_pred_mask = (logits_512>0).detach()
         
         for pred_mask, mask_512 in zip(bs_pred_mask, bs_mask_512):
             test_evaluator.process(pred_mask, mask_512)
@@ -120,7 +80,6 @@ def val_one_epoch(model: PromptSegNet, val_loader, test_evaluator:IoUMetric):
 def main(logger_name):
     # data loader
     train_loader,val_dataloader,metainfo = gene_loader(
-        dataset_domain = args.dataset_domain,
         data_tag = args.dataset_name,
         use_aug = args.use_aug,
         use_embed = args.use_embed,
@@ -140,7 +99,6 @@ def main(logger_name):
                 use_embed = args.use_embed,
                 sam_ckpt = sam_ckpt,
                 device = device,
-                prompt_types = args.prompt_types,
             ).to(device)
     # create logger
     logger,files_save_dir = get_logger(record_save_dir, model, args, logger_name)
@@ -169,6 +127,7 @@ def main(logger_name):
         metrics = val_one_epoch(model, val_dataloader, test_evaluator)
         if args.num_classes == 1:
             mIoU = metrics['ret_metrics_class']['IoU'][1]
+            Recall = metrics['ret_metrics_class']['Recall'][1]
         else:
             mIoU = metrics['mIoU']
         
@@ -199,15 +158,15 @@ if __name__ == "__main__":
     # set_seed(args.seed)
     # main(args.loss_type)
 
-    # for idx,base_lr in enumerate([0.005, 0.001, 0.0005]):
+    # for idx,base_lr in enumerate([0.003, 0.001, 0.0008]):
     #     args.base_lr = base_lr
     #     set_seed(args.seed)
     #     logger_name = f'{idx}'
     #     main(logger_name)
     
-    for idx,base_lr in enumerate([0.005, 0.001, 0.0005]):
+    for idx,base_lr in enumerate([0.003, 0.001, 0.0008]):
         args.base_lr = base_lr
-        for loss_type in ['loss_masks','focal_bdice','bce_bdice']:
+        for loss_type in ['loss_masks','bce_bdice']:
             set_seed(args.seed)
             args.loss_type = loss_type
             logger_name = f'{loss_type}_{idx}'
@@ -218,43 +177,25 @@ if __name__ == "__main__":
 '''
 use_inner_feat
 python scripts/prompt_seg/main.py \
-    --dataset_domain medical \
     --max_epochs 30 \
     --dataset_name pannuke_binary \
-    --prompt_types box point \
-    --train_load_parts 1 2 \
-    --val_load_parts 3 \
+    --train_prompt_type all_bboxes \
+    --val_prompt_type random_bbox \
     --use_embed \
     --use_inner_feat \
-    --train_bs 16 \
+    --train_bs 1 \
+    --val_bs 16 \
     --semantic_module_depth 2 \
     --loss_type loss_masks \
     --base_lr 0.005 \
     --warmup_epoch 5 \
-    --gamma 0.8 \
-    --train_sample_num 400 \
-    --debug_mode
-    --use_aug \
-
-use_embed all_boxes
-python scripts/prompt_seg/main.py \
-    --dataset_domain medical \
-    --max_epochs 30 \
-    --prompt_types all_boxes \
-    --dataset_name pannuke \
+    --gamma 0.9 \
     --train_load_parts 1 2 \
     --val_load_parts 3 \
-    --num_classes 6 \
-    --use_embed \
-    --train_bs 1 \
-    --val_bs 1 \
-    --semantic_module_depth 1 \
-    --loss_type ce_dice \
-    --base_lr 0.001 \
-    --warmup_epoch 5 \
-    --gamma 0.8 \
-    --train_sample_num 900 \
-    --device cuda:1
-    --debug_mode \
+    --train_sample_num 500 \
+    --dice_param 0.5 \
+    --save_each_epoch
+    --debug_mode
+    --use_aug \
 '''
 

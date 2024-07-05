@@ -4,6 +4,9 @@ import torch
 from functools import partial
 import numpy as np
 import cv2
+import copy
+
+import multiprocessing
 
 def set_seed(seed):
     random.seed(seed)
@@ -154,6 +157,337 @@ def gene_bbox_for_mask(image_mask_np):
     # 寻找连通域
     _, labels, stats, centroids = cv2.connectedComponentsWithStats(image_mask_np, connectivity=8)
     trans_box = lambda x1,y1,w,h: [x1,y1, x1 + w, y1 + h]
-    all_boxes = [trans_box(x1,y1,w,h) for x1,y1,w,h,_ in stats]
+    # stats[0] 是背景框
+    all_boxes = [trans_box(x1,y1,w,h) for x1,y1,w,h,_ in stats[1:]]
     return all_boxes
+
+def get_prompt(prompt_type, binary_mask, boxes_candidate, device, coord_ratio=1):
+    '''
+    Notices:
+        - binary_mask and boxes_candidate can only exist one of them.
+        - if boxes_candidate is None and prompt type include box, the boxes_candidate will be
+          generate from binary_mask.
+        - the return values of boxes and points, there dim 0 means different
     
+    Args:
+        - prompt_type(string): prompt type, belong to 
+            ['max_bbox', 'random_bbox', 'all_bboxes', 'random_point', 'max_bbox_center_point']
+        - binary_mask(np.array): The image masks. Expects an
+            image in HW uint8 format, with pixel values in [0, 1].
+        - boxes_candidate(np.array): The candidate boxes. Expects value format is 
+            [[x1,y1,x2,y2], ..., [x1,y1,x2,y2]].
+        - device: tensor to device.
+        - coord_ratio(int): box or point coords will be scaled to coord_ratio
+    
+    Returns:
+        (boxes and point which meet requirements of SAM prompt encoder)
+        - boxes(tensor): shape is (k, 1, 4), k is the num of boxes, 4 is (x1, y1, x2, y2)
+        - point(tuple): (coords_torch, labels_torch), coords_torch shape is (bs, k, 2), 2 is (x,y)
+            labels_torch shape is (bs, k), k is the num of points.
+        - sampled_idx(tensor): the idx of sampled boxes or point.
+    '''
+    allowed_types = ['max_bbox', 'random_bbox', 'all_bboxes', 'random_point', 'max_bbox_center_point', 'max_bbox_with_point']
+    assert prompt_type in allowed_types, \
+            f'the prompt_type must be in {allowed_types}'
+    assert binary_mask is not None or boxes_candidate is not None, \
+            f'binary_mask and boxes_candidate can only exist one of them'
+    
+    
+    boxes, point, sampled_idx = None, None, None
+
+    if binary_mask is not None and np.sum(binary_mask) == 0:
+        return boxes, point, sampled_idx
+    if boxes_candidate is not None and len(boxes_candidate) == 0:
+        return boxes, point, sampled_idx
+
+    if prompt_type == 'random_point':
+        input_points,_ = gene_points(binary_mask, 1, 0)
+        random_point = input_points[0] * coord_ratio
+        coords_torch = torch.as_tensor(np.array([random_point]), dtype=torch.float, device=device)
+        labels_torch = torch.ones(len(coords_torch), dtype=torch.int, device=device)
+        coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
+        point = (coords_torch, labels_torch)
+        return boxes, point, None
+    
+    if boxes_candidate is None:
+        boxes_candidate = gene_bbox_for_mask(binary_mask)
+        boxes_candidate = np.array(boxes_candidate)
+    else:
+        boxes_candidate = copy.deepcopy(boxes_candidate)
+    
+    boxes_candidate *= coord_ratio
+
+    if prompt_type == 'random_bbox':
+        random_bbox_idx = np.random.choice(range(len(boxes_candidate)), 1)[0]
+        box_np = np.array(boxes_candidate[random_bbox_idx]) # [x1,y1,x2,y2]
+        box_torch = torch.as_tensor(box_np[None, :], dtype=torch.float, device=device)  #[[x1,y1,x2,y2]]
+        boxes = box_torch[None, :]  #[[[x1,y1,x2,y2]]]
+        return boxes, point, [random_bbox_idx]
+    if prompt_type == 'all_bboxes':
+        box_np = np.array(boxes_candidate)
+        boxes = torch.as_tensor(box_np, dtype=torch.float, device=device)
+        boxes = boxes.unsqueeze(1)  # (k_box_nums, 1, 4)
+        return boxes, point, np.arange(len(boxes_candidate))
+   
+    
+    boxes_area = np.array([(x2-x1) * (y2-y1) for x1,y1,x2,y2 in boxes_candidate])
+    max_idx = np.argmax(boxes_area)
+    if prompt_type == 'max_bbox':
+        box_np = np.array(boxes_candidate[max_idx]) # [x1,y1,x2,y2]
+        box_torch = torch.as_tensor(box_np[None, :], dtype=torch.float, device=device)  #[[x1,y1,x2,y2]]
+        boxes = box_torch[None, :]  #[[[x1,y1,x2,y2]]]
+        return boxes, point, [max_idx]
+    if prompt_type == 'max_bbox_center_point':
+        x1,y1,x2,y2 = boxes_candidate[max_idx]
+        centroid_x,centroid_y = int(x1+(x2-x1)/2),int(y1+(y2-y1)/2)
+        coords_torch = torch.as_tensor(np.array([[centroid_x,centroid_y]]), dtype=torch.float, device=device)
+        labels_torch = torch.ones(len(coords_torch), dtype=torch.int, device=device)
+        coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
+        point = (coords_torch, labels_torch)
+        return boxes, point, [max_idx]
+    if prompt_type == 'max_bbox_with_point':
+        box_np = np.array(boxes_candidate[max_idx]) # [x1,y1,x2,y2]
+        box_torch = torch.as_tensor(box_np[None, :], dtype=torch.float, device=device)  #[[x1,y1,x2,y2]]
+        boxes = box_torch[None, :]  #[[[x1,y1,x2,y2]]]
+    
+        x1,y1,x2,y2 = boxes_candidate[max_idx]
+        centroid_x,centroid_y = int(x1+(x2-x1)/2),int(y1+(y2-y1)/2)
+        coords_torch = torch.as_tensor(np.array([[centroid_x,centroid_y]]), dtype=torch.float, device=device)
+        labels_torch = torch.ones(len(coords_torch), dtype=torch.int, device=device)
+        coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
+        point = (coords_torch, labels_torch)
+        return boxes, point, [max_idx]
+
+def get_det(mask):
+    '''
+    mask: numpy.array, shape is (h,w)
+    '''
+    r = 4
+    mask = mask.astype(int)
+    height = mask.shape[0]  
+    width  = mask.shape[1]
+    det = np.zeros((height,width))
+    for i in range(r, height-r):
+        for j in range(r, width-r):
+            y1,x1,y2,x2 = i-r, j-r, i+r, j+r
+            if np.sum(mask[y1:y2, x1:x2]) < 0.0001:
+                continue
+            g1,g2,g3,g4,g5,g6,g7,g8 = 0,0,0,0,0,0,0,0
+            rr = 2
+            for k in range(rr):
+                for l in range(k+1, r+1):
+                    g1 += (mask[i,j+k] - mask[i,j+l])
+                    g2 += (mask[i-k,j+k] - mask[i-l,j+l])
+                    g3 += (mask[i-k,j] - mask[i-l,j])
+                    g4 += (mask[i-k,j-k] - mask[i-l,j-l])
+                    g5 += (mask[i,j-k] - mask[i,j-l])
+                    g6 += (mask[i+k,j-k] - mask[i+l,j-l])
+                    g7 += (mask[i+k,j] - mask[i+l,j])
+                    g8 += (mask[i+k,j+k] - mask[i+l,j+l])
+           
+            if g1>0 and g2>0 and g3>0 and g4>0 and g5>0 and g6>0 and g7>0 and g8>0:
+                det[i,j] = g1+g2+g3+g4+g5+g6+g7+g8
+    
+    if det.max() - det.min() != 0:
+        det = (det-det.min())/(det.max()-det.min())
+    return det
+
+
+def split_matrix(matrix):
+    h, w = matrix.shape
+    return [matrix[:h//2, :w//2], matrix[:h//2, w//2:], matrix[h//2:, :w//2], matrix[h//2:, w//2:]]
+
+def combine_matrices(submatrices):
+    top = np.concatenate((submatrices[0], submatrices[1]), axis=1)
+    bottom = np.concatenate((submatrices[2], submatrices[3]), axis=1)
+    return np.concatenate((top, bottom), axis=0)
+
+def get_det_multiprocessing(mask):
+    mask = mask.astype(int)
+
+    # 将矩阵分割成 4 个子矩阵
+    submatrices = split_matrix(mask)
+    # 创建进程池，切成多少块就用多少个核
+    # cpu_num = multiprocessing.cpu_count()
+    cpu_num = 4
+    pool = multiprocessing.Pool(processes=cpu_num)
+
+    # 异步处理每个子矩阵
+    results = [pool.apply_async(get_det, (submatrix,)) for submatrix in submatrices]
+    # 获取每个子矩阵的处理结果
+    processed_submatrices = [result.get() for result in results]
+
+    # 关闭进程池
+    pool.close()
+    pool.join()
+
+    # 将处理后的子矩阵组合回一个完整的矩阵
+    processed_matrix = combine_matrices(processed_submatrices)
+
+    return processed_matrix
+
+def get_connection(mask,thresh=100):
+    '''
+    input: n*n
+    bbox: from 0
+    idx: from 1
+    '''
+    queue = []
+    regions = []
+    minmaxs = []
+    mask1 = mask.copy()
+    flag = mask1.copy()
+    output = np.zeros(mask1.shape)
+
+    count = 0
+    # thresh = 100
+
+    #find 
+    for i in range(mask1.shape[0]):
+        for j in range(mask1.shape[1]):
+            if mask1[i,j]!=0 and flag[i,j]!=0:
+                region = []
+                minmax = np.zeros((mask1.shape[0],2))
+                minmax[:,0] = mask1.shape[1]+1
+                minmax[:,1] = -1
+                queue.clear()
+                region.append((i,j))
+                queue.append((i,j))
+                flag[i,j] = 0
+                while len(queue)>0:
+                    item = queue.pop(0)
+                    if item[0]-1>=0 and mask1[item[0]-1,item[1]]!=0 and flag[item[0]-1,item[1]]!=0:
+                        queue.append((item[0]-1,item[1]))
+                        region.append((item[0]-1,item[1]))
+                        flag[item[0]-1,item[1]] = 0
+                        if minmax[item[0]-1,0]>item[1]:
+                            minmax[item[0]-1,0] = item[1]
+                        if minmax[item[0]-1,1]<item[1]:
+                            minmax[item[0]-1,1] = item[1]
+                    if item[0]+1<=mask1.shape[0]-1 and mask1[item[0]+1,item[1]]!=0 and flag[item[0]+1,item[1]]!=0:
+                        queue.append((item[0]+1,item[1]))
+                        region.append((item[0]+1,item[1]))
+                        flag[item[0]+1,item[1]] = 0
+                        if minmax[item[0]+1,0]>item[1]:
+                            minmax[item[0]+1,0] = item[1]
+                        if minmax[item[0]+1,1]<item[1]:
+                            minmax[item[0]+1,1] = item[1]
+                    if item[1]-1>=0 and mask1[item[0],item[1]-1]!=0 and flag[item[0],item[1]-1]!=0:
+                        queue.append((item[0],item[1]-1))
+                        region.append((item[0],item[1]-1))
+                        flag[item[0],item[1]-1] = 0
+                        if minmax[item[0],0]>item[1]-1:
+                            minmax[item[0],0] = item[1]-1
+                        if minmax[item[0],1]<item[1]-1:
+                            minmax[item[0],1] = item[1]-1
+                    if item[1]+1<=mask1.shape[1]-1 and mask1[item[0],item[1]+1]!=0 and flag[item[0],item[1]+1]!=0:
+                        queue.append((item[0],item[1]+1))
+                        region.append((item[0],item[1]+1))
+                        flag[item[0],item[1]+1] = 0
+                        if minmax[item[0],0]>item[1]+1:
+                            minmax[item[0],0] = item[1]+1
+                        if minmax[item[0],1]<item[1]+1:
+                            minmax[item[0],1] = item[1]+1
+                if len(region)<thresh:
+                    continue
+                
+                a = list(region)
+                count += 1
+                b = minmax.copy()
+                # print(id(region))
+                # print(id(a))
+                regions.append(a)
+                minmaxs.append(b)
+                for k in region:
+                    output[k[0],k[1]] = count
+    # bbox
+    # [hmin,wmin,hmax,wmax]
+    bboxs = []
+    for minmax in minmaxs:
+        hmin,wmin,hmax,wmax = 0,0,0,0
+        inflag = 0
+        for i in range(minmax.shape[0]):
+            if minmax[i,0] > minmax[i,1]:
+                if inflag == 1:
+                    inflag = 0
+                    break
+                else:
+                    continue
+            if inflag == 0:
+                inflag = 1
+                hmin = i
+                hmax = i
+                wmin = minmax[i,0]
+                wmax = minmax[i,1]
+            else:
+                hmax = i
+                wmin = min(wmin,minmax[i,0])
+                wmax = max(wmax,minmax[i,1])
+
+        bboxs.append([int(hmin),int(wmin),int(hmax),int(wmax)])
+    
+    return output,bboxs
+
+def is_box_inside(box1, box2):
+    """
+    判断 box1 是否被 box2 完全包围
+    box: [x_min, y_min, x_max, y_max]
+    """
+    return (box1[0] >= box2[0] and
+            box1[1] >= box2[1] and
+            box1[2] <= box2[2] and
+            box1[3] <= box2[3])
+
+def filter_boxes(boxes):
+    """
+    过滤掉被其他 box 完全包围的 box
+    boxes: numpy array of shape (N, 4), where each row is [x_min, y_min, x_max, y_max]
+    """
+    keep = np.ones(len(boxes), dtype=bool)
+    for i in range(len(boxes)):
+        for j in range(len(boxes)):
+            if i != j and is_box_inside(boxes[i], boxes[j]):
+                keep[i] = False
+                break
+    keep_idxs = np.where(keep)[0]
+    return keep_idxs
+
+def fetch_proposal_points(logits_256_gray):
+
+    logits_256_gray[logits_256_gray<0] = 0
+    valued_points,valued_bboxes = [],[]
+
+    min_v, max_v = torch.min(logits_256_gray),torch.max(logits_256_gray)
+    if max_v > 0:
+        logits_256_gray = ((logits_256_gray - min_v) / (max_v - min_v)) * 255
+        logits_256_gray = logits_256_gray.numpy()
+        # edge_intensity = get_det(logits_256_gray)   # 每张耗时 1.2s 左右
+        edge_intensity = get_det_multiprocessing(logits_256_gray)   # 每张耗时 1.2s 左右
+        edge_intensity[edge_intensity>0] = 1
+        avgidx, avgbboxs = get_connection(edge_intensity,thresh=1)
+
+        # fig = plt.figure(figsize=(8,4))
+        # ax = fig.add_subplot(121)
+        # ax.imshow(logits_256_gray, cmap='gray')
+        # ax.set_title('logits gray')
+        # edge_intensity*=255
+        # ax = fig.add_subplot(122)
+        # ax.imshow(edge_intensity, cmap='gray')
+        # ax.set_title('edge intensity')
+        # plt.tight_layout()
+        # plt.savefig('get_det_multiprocessing_optimize.png')
+        # plt.close()
+        
+        valued_bboxes = []
+        for avgbox in avgbboxs:
+            hmin,wmin,hmax,wmax = avgbox
+            center = [int((hmax+hmin)/2),int((wmax+wmin)/2)]
+            if logits_256_gray[center[0], center[1]] > 0:
+                valued_points.append([center[1], center[0]])
+                valued_bboxes.append([wmin, hmin, wmax, hmax])
+
+        valued_points, idx = np.unique(np.array(valued_points), return_index=True, axis=0)
+        valued_bboxes = np.array(valued_bboxes)[idx]
+        valued_points,valued_bboxes = valued_points.tolist(),valued_bboxes.tolist()
+
+    return valued_points,edge_intensity,valued_bboxes

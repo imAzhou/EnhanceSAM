@@ -8,6 +8,7 @@ from torchvision.transforms import InterpolationMode
 from utils import ResizeLongestSide
 from .augment import Pad, RandomFlip, PhotoMetricDistortion
 import torchvision.transforms as T
+import json
 
 
 class PannukeBinaryDataset(Dataset):
@@ -79,6 +80,11 @@ class PannukeBinaryDataset(Dataset):
             ),
         }
 
+        image_boxes_path = f'{self.data_root}/{part_dir}/ann_boxes_dir/{img_name}.json'
+        with open(image_boxes_path,'r',encoding='utf-8') as f :
+            data['gt_boxes'] = json.load(f)
+            data['coord_ratio'] = 1024 // 256
+
         if self.use_embed:
             img_tensor_path = f'{self.data_root}/{part_dir}/img_tensor/{img_name}.pt'
             data['img_embed'] = torch.load(img_tensor_path)
@@ -100,10 +106,10 @@ class PannukeBinaryDataset(Dataset):
         image_mask = image_mask_binary
 
         # aug_img: tensor,(3, 1024, 1024)      aug_gt: tensor,(1024, 1024)
+        aug_img, aug_gt, input_size = self.gene_origin_data(image, image_mask)
+        data['input_size'] = input_size
         if self.use_aug:
-            aug_img, aug_gt = self.gene_aug_data(image, image_mask)
-        else:
-            aug_img, aug_gt = self.gene_origin_data(image, image_mask)
+            aug_img, aug_gt = self.gene_aug_data(aug_img, aug_gt)
         
         # if torch.sum(aug_gt) > 0:
         #   self._showimg_and_mask(aug_img, aug_gt,img_name)
@@ -137,8 +143,6 @@ class PannukeBinaryDataset(Dataset):
         concat_pair = torch.cat([image, image_mask], dim=0).unsqueeze(0)
 
         common_transform = T.Compose([
-            T.Resize((1024, 1024)),  # 缩放到指定大小
-            Pad(),
             RandomFlip(prob=0.5),
             T.RandomAffine(degrees=20),
             T.RandomResizedCrop((1024, 1024), scale=(0.6, 1.4))
@@ -161,8 +165,11 @@ class PannukeBinaryDataset(Dataset):
         input_image = transform.apply_image(image, InterpolationMode.BILINEAR)
         input_image = torch.as_tensor(input_image).permute(2, 0, 1).contiguous()
         mask = transform.apply_image(image_mask.astype(np.uint8),InterpolationMode.NEAREST)
+
+        # (h,w)
+        input_size = (input_image.shape[1], input_image.shape[2])
         
         aug_img = Pad()(input_image)
         aug_gt = Pad()(torch.as_tensor(mask))
 
-        return aug_img, aug_gt
+        return aug_img, aug_gt, input_size

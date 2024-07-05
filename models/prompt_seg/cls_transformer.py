@@ -93,7 +93,7 @@ class TwoWayTransformer(nn.Module):
         
         # Apply transformer blocks and final layernorm
         # tow_way_keys = []
-        for layer in self.layers:
+        for i,layer in enumerate(self.layers):
             queries, keys = layer(
                 queries=queries,
                 keys=keys,

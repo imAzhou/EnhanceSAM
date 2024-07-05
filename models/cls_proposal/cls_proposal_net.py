@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from utils import gene_point_embed
 from models.sam.build_sam import sam_model_registry
 from .mask_decoder import MaskDecoder
 from .cls_transformer import TwoWayTransformer

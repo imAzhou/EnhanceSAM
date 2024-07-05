@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from torch.utils.data import Dataset
 from torchvision.transforms import InterpolationMode
-from utils import SegLocalVisualizer, SegDataSample, ResizeLongestSide
+from utils import ResizeLongestSide
 from .augment import Pad, RandomFlip, PhotoMetricDistortion
 import torchvision.transforms as T
 from mmengine.structures import PixelData
@@ -167,16 +167,16 @@ class SSBaseDataset(Dataset):
 
         return aug_img, aug_gt
     
-    def _showimg_and_mask(self, aug_img, aug_gt, img_name):
-        save_dir = 'ss_img_vis'
-        seg_local_visualizer = SegLocalVisualizer(
-            save_dir = save_dir,
-            classes = self.METAINFO['classes'],
-            palette = self.METAINFO['palette'],
-            alpha = 0.6
-        )
-        data_sample = SegDataSample()
-        data_sample.set_data({
-            'gt_sem_seg': PixelData(**{'data': aug_gt}),
-        })
-        seg_local_visualizer.add_datasample(img_name, aug_img, data_sample)
+    # def _showimg_and_mask(self, aug_img, aug_gt, img_name):
+    #     save_dir = 'ss_img_vis'
+    #     seg_local_visualizer = SegLocalVisualizer(
+    #         save_dir = save_dir,
+    #         classes = self.METAINFO['classes'],
+    #         palette = self.METAINFO['palette'],
+    #         alpha = 0.6
+    #     )
+    #     data_sample = SegDataSample()
+    #     data_sample.set_data({
+    #         'gt_sem_seg': PixelData(**{'data': aug_gt}),
+    #     })
+    #     seg_local_visualizer.add_datasample(img_name, aug_img, data_sample)

@@ -157,7 +157,7 @@ class TwoWayAttentionBlock(nn.Module):
             internal_dim = embedding_dim // attention_downsample_rate
         )
         self.sm_depth = sm_depth
-        if sm_depth > 0:
+        if sm_depth > 0 and not skip_first_layer_pe:
             self.semantic_module = SemanticModule(embedding_dim, sm_depth)
 
         self.skip_first_layer_pe = skip_first_layer_pe
@@ -194,7 +194,7 @@ class TwoWayAttentionBlock(nn.Module):
         attn_out = self.cross_attn_image_to_token(q=k, k=q, v=queries)
 
         # azhou add
-        if self.sm_depth > 0:
+        if self.sm_depth > 0 and not self.skip_first_layer_pe:
             semantic_keys = self.semantic_module(keys)
             keys = keys + semantic_keys + attn_out
         else:
@@ -272,33 +272,38 @@ class SemanticModule(nn.Module):
     ) -> None:
         super().__init__()
                
-        self.local_conv = nn.ModuleList()
+        self.downsample_blocks = nn.ModuleList()
+        self.upsample_blocks = nn.ModuleList()
         self.sm_depth = sm_depth
-        for i in range(self.sm_depth):
-            # H/2, W/2, C*2
-            downsample_block = nn.Sequential(
-                nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=1),
-                nn.Conv2d(embedding_dim*2, embedding_dim*2, kernel_size=3, groups=embedding_dim*2, stride=2),
+        semantic_channels = [256, 512]
+        for c in semantic_channels:
+            downsample = nn.Sequential(
+                nn.Conv2d(c, c*2, kernel_size=1),
+                nn.Conv2d(c*2, c*2, kernel_size=3, groups=c*2, stride=2, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=1),
+                nn.Conv2d(c*2, c*2, kernel_size=1)
             )
-            # upsample_block = nn.Sequential(
-            #     nn.ConvTranspose2d(embed_dim, transformer_dim, kernel_size=2, stride=2),
-            #     LayerNorm2d(transformer_dim),
-            #     nn.GELU(), 
-            #     nn.ConvTranspose2d(transformer_dim, transformer_dim // 8, kernel_size=2, stride=2)
-            # )
-            self.local_conv.append(block)
+            self.downsample_blocks.append(downsample)
+        
+        for i in range(len(semantic_channels)):
+            c = semantic_channels[len(semantic_channels)-i-1]*2
+            upsample = nn.Sequential(
+                nn.ConvTranspose2d(c, c // 2, kernel_size=2, stride=2),
+                nn.GELU()
+            )
+            self.upsample_blocks.append(upsample)
+            
         
     def forward(self, tokens: Tensor) -> Tensor:
         
         b,l,c = tokens.shape
         patch_size = int(math.sqrt(l))
         local_conv_f = tokens.transpose(-1,-2).view(b, c, patch_size, patch_size)
-        for block in self.local_conv:
+        for block in self.downsample_blocks:
             local_conv_f = block(local_conv_f)
-        # local_conv_f = self.local_conv(tokens.transpose(-1,-2).view(b, c, patch_size, patch_size))
+        for block in self.upsample_blocks:
+            local_conv_f = block(local_conv_f)
+        
         semantic_tokens = local_conv_f.flatten(2).permute(0, 2, 1)
-
         return semantic_tokens
     

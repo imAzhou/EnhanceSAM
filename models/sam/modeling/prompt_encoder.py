@@ -93,11 +93,11 @@ class PromptEncoder(nn.Module):
     def _embed_boxes(self, boxes: torch.Tensor) -> torch.Tensor:
         """Embeds box prompts."""
         boxes = boxes + 0.5  # Shift to center of pixel
-        coords = boxes.reshape(-1, 2, 2)
-        corner_embedding = self.pe_layer.forward_with_coords(coords, self.input_image_size)
+        coords = boxes.reshape(-1, 2, 2)    # (bs*k, 2, 2)
+        corner_embedding = self.pe_layer.forward_with_coords(coords, self.input_image_size)    # (bs*k, 2, 256)
         corner_embedding[:, 0, :] += self.point_embeddings[2].weight
         corner_embedding[:, 1, :] += self.point_embeddings[3].weight
-        return corner_embedding
+        return corner_embedding    # (bs*k, 2, 256)
 
     def _embed_masks(self, masks: torch.Tensor) -> torch.Tensor:
         """Embeds mask inputs."""
@@ -137,8 +137,8 @@ class PromptEncoder(nn.Module):
 
         Arguments:
           points (tuple(torch.Tensor, torch.Tensor) or none): point coordinates
-            and labels to embed.
-          boxes (torch.Tensor or none): boxes to embed
+            and labels to embed. coords shape is (bs, k, 2)
+          boxes (torch.Tensor or none): boxes to embed, shape is (bs, k, 4)
           masks (torch.Tensor or none): masks to embed
 
         Returns:
@@ -156,9 +156,12 @@ class PromptEncoder(nn.Module):
             # coords 是在原图输入尺寸(规范化后的尺寸，例如1024*2024,512*512)维度上的坐标, 格式为(x,y)
             # coords.shape: (bs, point_num, 2): 2: 0 is x, 1 is y
             coords, labels = points
+            # 若 boxes 为空，point 会填充一个空白点，即每一个点prompt用 (2,256) 表征
+            # 否则每一个点prompt只用 (1,256) 表征
             point_embeddings = self._embed_points(coords, labels, pad=(boxes is None))
             sparse_embeddings = torch.cat([sparse_embeddings, point_embeddings], dim=1)
         if boxes is not None:
+            # 每一个框prompt用 (2,256) 表征
             box_embeddings = self._embed_boxes(boxes)
             sparse_embeddings = torch.cat([sparse_embeddings, box_embeddings], dim=1)
 

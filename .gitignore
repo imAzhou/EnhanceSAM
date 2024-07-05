@@ -3,6 +3,6 @@ build/
 checkpoints_sam/
 logs/
 source/
-visual_result/
+visual_results/
 enhance_sam.egg-info/
 **/__pycache__

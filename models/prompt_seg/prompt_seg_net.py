@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
-from utils import gene_point_embed,gene_max_area_box,gene_bbox_for_mask
+from utils import one_hot_encoder, get_prompt
 from models.sam.build_sam import sam_model_registry
 from .mask_decoder import MaskDecoder
-# from .cls_transformer import TwoWayTransformer
-from .cls_transformer_backup import TwoWayTransformer
+from .cls_transformer import TwoWayTransformer
 import torch.nn.functional as F
 import numpy as np
+import cv2
+from mmdet.structures import DetDataSample
 
 class PromptSegNet(nn.Module):
 
@@ -14,25 +15,27 @@ class PromptSegNet(nn.Module):
                  num_classes = 1,
                  sm_depth = 1,
                  use_inner_feat = False,
+                 use_multi_mlps = False,
+                 update_prompt_encoder = False,
                  use_embed = False,
                  sam_ckpt = None,
                  device = None,
-                 prompt_types = []
+                 ignore_idx = 255,
                 ):
         super(PromptSegNet, self).__init__()
 
-        assert all(item in ['box','point','all_boxes'] for item in prompt_types), \
-        "One or more prompt type are not allowed."
-
+        self.use_multi_mlps = use_multi_mlps
         self.use_inner_feat = use_inner_feat
+        self.update_prompt_encoder = update_prompt_encoder
         self.use_embed = use_embed
         self.num_classes = num_classes
+        self.ignore_idx = ignore_idx
         self.device = device
-        self.prompt_types = prompt_types
         sam = sam_model_registry['vit_h'](checkpoint = sam_ckpt)
         self.image_encoder = sam.image_encoder
         self.prompt_encoder = sam.prompt_encoder
         self.preprocess = sam.preprocess
+        self.postprocess_masks = sam.postprocess_masks
         
         transformer_dim = sam.mask_decoder.transformer_dim
         self.mask_decoder = MaskDecoder(
@@ -47,13 +50,15 @@ class PromptSegNet(nn.Module):
             transformer_dim = transformer_dim,
             encoder_embed_dim = 1280,
             use_inner_feat = use_inner_feat,
+            use_multi_mlps = use_multi_mlps,
         )
 
         self.except_keys = [
-            'cls_tokens', 
-            'cls_mlps',
+            'cls_token', 
+            'cls_prediction_head',
+            'output_tokens',
+            'output_mlps',
             'process_inter_feat',
-            'upscaling_inter_feat',
             'transformer.layers.0.semantic_module',
             'transformer.layers.1.semantic_module',
         ]
@@ -65,6 +70,9 @@ class PromptSegNet(nn.Module):
         decoder_state_dict = {}
         discard_keys = [
             'output_hypernetworks_mlps',
+            'iou_token',
+            'mask_tokens',
+            'iou_prediction_head'
         ]
         for key,value in sam_mask_decoder_params.items():
             key_first = key.split('.')[0]
@@ -74,15 +82,16 @@ class PromptSegNet(nn.Module):
         print('='*10 + ' load parameters from sam ' + '='*10)
         print(self.mask_decoder.load_state_dict(decoder_state_dict, strict = False))
         use_weight = sam_mask_decoder_params['mask_tokens.weight'][2].unsqueeze(0)
-        cls_token_init_weight = torch.repeat_interleave(use_weight, self.num_classes, dim=0)
-        self.mask_decoder.cls_tokens.weight = nn.Parameter(cls_token_init_weight)
+        repeat_num = self.num_classes if self.use_multi_mlps else 1
+        cls_token_init_weight = torch.repeat_interleave(use_weight, repeat_num, dim=0)
+        self.mask_decoder.output_tokens.weight = nn.Parameter(cls_token_init_weight)
         print('='*59)
 
     def freeze_parameters(self):
         for name, param in self.image_encoder.named_parameters():
             param.requires_grad = False
         for name, param in self.prompt_encoder.named_parameters():
-            param.requires_grad = False
+            param.requires_grad = self.update_prompt_encoder
         
         self.except_keys.append('output_upscaling')
         # freeze transformer
@@ -109,88 +118,153 @@ class PromptSegNet(nn.Module):
         print(self.mask_decoder.load_state_dict(state_dict['mask_decoder'], strict = False))
         print('='*59)
 
-    def forward(self, sampled_batch: dict):
-        mask_1024 = sampled_batch['mask_1024']  # shape: (bs,h,w)
+    def forward_single_class(self, sampled_batch, prompt_type):
+        
         bs_image_embedding,inter_feature = self.gene_img_embed(sampled_batch)
 
-        all_cls_logits,all_cls_prompts = [],[]
-        for cls_i in range(self.num_classes):
-            mask_1024_cls_i = (mask_1024 == (1 if self.num_classes == 1 else cls_i)).to(torch.uint8)
-            low_logits, prompts = self.forward_single_class(bs_image_embedding,inter_feature, mask_1024_cls_i)
-            low_logits_cls_i = low_logits[:,cls_i,::].unsqueeze(1)
-            all_cls_logits.append(low_logits_cls_i)
-            all_cls_prompts.append(prompts)
-
-        # all_cls_logits.shape: (bs, num_class, h ,w)
-        all_cls_logits = torch.cat(all_cls_logits, dim=1)
-        all_cls_logits_1024 = F.interpolate(
-            all_cls_logits,
+        type_to_repeat = dict(
+            max_bbox = 2,
+            random_bbox = 2,
+            random_point = 2,
+            max_bbox_center_point = 2,
+            max_bbox_with_point = 3,
+            all_bboxes = 0
+        )
+        bs_sparse_embedding = []
+        bs_prompt = []
+        bs = len(sampled_batch['inputs'])
+        input_size,origin_size = None,None
+        for idx in range(bs):
+            datainfo: DetDataSample = sampled_batch['data_samples'][idx]
+            input_size,origin_size = datainfo.img_shape,datainfo.ori_shape
+            boxes, points = None, None
+            if prompt_type is not None:
+                # all_gtboxes.shape: (k, 4)
+                all_gtboxes = datainfo.gt_instances.bboxes.tensor.numpy()
+                coord_ratio = 1024 // datainfo.img_shape[0]
+                boxes, points, _ = get_prompt(prompt_type, None, all_gtboxes, self.device, coord_ratio)
+                
+            sparse_embeddings, dense_embeddings = self.prompt_encoder(
+                points = points,
+                boxes = boxes,
+                masks = None,
+            )
+            if sparse_embeddings.shape[1] == 0 and prompt_type is not None:
+                repeat_num = type_to_repeat[prompt_type]
+                sparse_embeddings = self.prompt_encoder.not_a_point_embed.weight.unsqueeze(0)
+                sparse_embeddings = torch.repeat_interleave(sparse_embeddings, repeat_num, dim=1)
+            bs_sparse_embedding.append(sparse_embeddings)
+        
+            bs_prompt.append(dict(
+                points = points,
+                boxes = boxes,
+            ))
+        bs_sparse_embedding = torch.cat(bs_sparse_embedding, dim=0)
+        
+        image_pe = self.prompt_encoder.get_dense_pe()
+        # low_res_masks.shape: (bs, num_cls, 256, 256)
+        low_res_masks = self.mask_decoder(
+            image_embeddings = bs_image_embedding,
+            image_pe = image_pe,
+            sparse_prompt_embeddings = bs_sparse_embedding,
+            dense_prompt_embeddings = dense_embeddings,
+            inter_feature = inter_feature
+        )
+        logits_1024 = F.interpolate(
+            low_res_masks,
             (1024, 1024),
             mode="bilinear",
             align_corners=False,
         )
+        logits_origin = self.postprocess_masks(logits_1024, input_size, origin_size)
         outputs = {
-            'pred_mask_512': all_cls_logits,
-            'pred_mask_1024': all_cls_logits_1024,
-            'bs_point_box': all_cls_prompts,    # [[{point:[[x1,y1],[x1,y1]], box:[x1,y1,x2,y2]},{}],[],...,[]]
+            'logits_256': low_res_masks,
+            'logits_origin': logits_origin,
+            'prompts': bs_prompt,
         }
-
         return outputs
+    
+    def forward_multi_class(self, sampled_batch, prompt_type, mask_256_logits=None):
+        mask_512 = sampled_batch['mask_512'].to(self.device)
+        gt_boxes,coord_ratio = None,1
+        # one_hot_gt_mask_512.shape: (1, num_cls, h, w)
+        one_hot_gt_mask_512 = one_hot_encoder(self.num_classes, mask_512)
 
-    def forward_single_class(self, bs_image_embedding, inter_feature, mask_1024_cls_i):
-        sparse,dense,prompts = self.gene_prompt_embed(bs_image_embedding, mask_1024_cls_i)
+        boxes,points,masks = None, None, None
+        # 若当前图像没有任何前景包围框，则它应该输出全零图
+        target_cls = (torch.ones((1,), dtype=torch.uint8) * self.ignore_idx).to(self.device)
+        target_masks = torch.zeros_like(mask_512).to(self.device)
+
+        all_gtboxes, all_gtboxes_clsid, all_gtboxes_gtmasks = [],[],[]
+        if 'gt_boxes' in sampled_batch.keys():
+            gt_boxes = sampled_batch['gt_boxes'][0]
+            coord_ratio = sampled_batch['coord_ratio'][0].item()
+            for cls_id, boxes in gt_boxes.items():
+                cls_id = int(cls_id)
+                choice_boxes, _, sample_idx = get_prompt(prompt_type, None, np.array(boxes), self.device, coord_ratio)
+                all_gtboxes.extend(choice_boxes)
+                all_gtboxes_clsid.extend([cls_id]*len(choice_boxes))
+                gtmasks = torch.repeat_interleave(one_hot_gt_mask_512[:,cls_id, ::], len(choice_boxes), dim=0)
+                all_gtboxes_gtmasks.extend(gtmasks)
+            
+        if len(all_gtboxes) > 0:
+            target_cls = torch.as_tensor(all_gtboxes_clsid, device=self.device)
+            target_masks = torch.stack(all_gtboxes_gtmasks).to(self.device)
+            boxes = torch.stack(all_gtboxes).to(self.device)
+
+        bs_image_embedding,inter_feature = self.gene_img_embed(sampled_batch)
+        sparse_embeddings, dense_embeddings = self.prompt_encoder(
+            points = points,
+            boxes = boxes,
+            masks = masks,   # masks.shape: (k_num_boxes or 1, 1, 256, 256)
+        )
         image_pe = self.prompt_encoder.get_dense_pe()
-        low_res_masks = self.mask_decoder(
+        # low_logits.shape: (k_num_boxes or 1, num_cls or 1, 256, 256)
+        # cls_logits.shape: (k_num_boxes or 1, num_cls)
+        low_logits,cls_logits = self.mask_decoder(
             image_embeddings = bs_image_embedding,
             image_pe = image_pe,
-            sparse_prompt_embeddings = sparse,
-            dense_prompt_embeddings = dense,
+            sparse_prompt_embeddings = sparse_embeddings,
+            dense_prompt_embeddings = dense_embeddings,
             inter_feature = inter_feature
         )
-        return low_res_masks, prompts
-
-    def gene_prompt_embed(self, bs_image_embedding, label_mask):
-        bs_sparse_embedding = []
-        bs_point_box = []
-        point,box,all_boxes = None,None,None
-        for single_label in label_mask:
-            if 'all_boxes' in self.prompt_types:    # batch_size always equal 1
-                # sparse_embeddings.shape: (k_boxes, 2, 256) or (1, 0, 256)
-                sparse_embedding, all_boxes = self._gene_sparse_embed_by_allbox(single_label.numpy(),self.device)
-            else:
-                # sparse_embeddings.shape: (bs, 3, 256) or (1, 0, 256)
-                sparse_embedding, (point,box) = self._gene_sparse_embed(single_label.numpy(),self.device)
-                # there is no positive point
-                if sparse_embedding.shape[1] == 0 and len(self.prompt_types) > 0:
-                    sparse_embedding = self.prompt_encoder.not_a_point_embed.weight.unsqueeze(0)
-                    # when prompt box is none, prompt encoder will concat more point embedding
-                    repeat_time = 3 if len(self.prompt_types) == 2 else 2
-                    sparse_embedding = torch.repeat_interleave(sparse_embedding, repeat_time, dim=1)
-
-            bs_point_box.append({
-                'point': point,
-                'box': box,
-                'all_boxes': all_boxes
-            })
-            bs_sparse_embedding.append(sparse_embedding)
-
-        bs_sparse_embedding = torch.cat(bs_sparse_embedding, dim=0)
-        _,c,h,w = bs_image_embedding.shape
-        p = self.prompt_encoder
-        dense_embeddings = p.no_mask_embed.weight.reshape(1, -1, 1, 1).expand(
-            bs_sparse_embedding.shape[0], -1, h, w
+        logits_512 = F.interpolate(
+            low_logits,
+            (512, 512),
+            mode="bilinear",
+            align_corners=False,
         )
+        if self.use_multi_mlps:
+            # cls_pred.shape: (k_num_boxes or 1, )
+            cls_pred = torch.argmax(cls_logits, dim=1)
+            cls_low_logits = [logits_512[i, cls_pred[i], ::] for i in range(len(cls_pred))]
+            cls_low_logits = torch.stack(cls_low_logits,dim=0).unsqueeze(1)
+        else:
+            cls_low_logits = logits_512
 
-        return bs_sparse_embedding, dense_embeddings, bs_point_box
+        outputs = dict(
+            pred_mask_logits = cls_low_logits, target_masks = target_masks,
+            pred_cls_logits = cls_logits, target_cls = target_cls,
+            prompts = dict(
+                points = points,
+                boxes = boxes,
+            )
+        )
+    
+        return outputs
 
     def gene_img_embed(self, sampled_batch: dict):
+        
         if self.use_embed:
-            bs_image_embedding = sampled_batch['img_embed'].to(self.device)
-            inter_feature = sampled_batch['img_embed_inner'].to(self.device) if self.use_inner_feat else None
+            bs_image_embedding = torch.stack(sampled_batch['img_embed']).to(self.device)
+            if self.use_inner_feat:
+                inter_feature = torch.stack(sampled_batch['inter_feat']).to(self.device)
+            else:
+                inter_feature = None
         else:
             with torch.no_grad():
                 # input_images.shape: [bs, 3, 1024, 1024]
-                input_images = self.preprocess(sampled_batch['input_image']).to(self.device)
+                input_images = self.preprocess(sampled_batch['input']).to(self.device)
                 # bs_image_embedding.shape: [bs, c=256, h=64, w=64]
                 if self.use_inner_feat:
                     bs_image_embedding,inter_feature = self.image_encoder(input_images, need_inter=True)
@@ -200,50 +274,4 @@ class PromptSegNet(nn.Module):
                     inter_feature = None
 
         return bs_image_embedding,inter_feature
-    
-    def _gene_sparse_embed(self, mask_np, device):
-        points,boxes = None, None
-        center_point,bbox = None, None
-        if np.sum(mask_np) > 0:
-            center_point,bbox = gene_max_area_box(mask_np)
-            coords_torch = torch.as_tensor(np.array([center_point]), dtype=torch.float, device=device)
-            labels_torch = torch.ones(len(coords_torch), dtype=torch.int, device=device)
-            coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
-            points = (coords_torch, labels_torch)
-
-            box_np = np.array(bbox) # [x1,y1,x2,y2]
-            box_torch = torch.as_tensor(box_np[None, :], dtype=torch.float, device=device)  #[[x1,y1,x2,y2]]
-            boxes = box_torch[None, :]  #[[[x1,y1,x2,y2]]]
-
-        if 'box' not in self.prompt_types:
-            boxes = None
-            bbox = None
-        if 'point' not in self.prompt_types:
-            points = None
-            center_point = None
-
-        sparse_embeddings, _ = self.prompt_encoder(
-            points = points,
-            boxes = boxes,
-            masks = None,
-        )
-
-        return sparse_embeddings, (center_point,bbox)
-    
-    def _gene_sparse_embed_by_allbox(self, mask_np, device):
-        points,boxes = None, None
-        all_boxes = []
-        if np.sum(mask_np) > 0:
-            all_boxes = gene_bbox_for_mask(mask_np)
-            box_np = np.array(all_boxes)
-            boxes = torch.as_tensor(box_np, dtype=torch.float, device=device)
-            boxes = boxes.unsqueeze(1)  # (k_box_nums, 1, 4)
-        
-        # sparse_embeddings.shape: (k_boxes, 2, 256) or (1, 0, 256)
-        sparse_embeddings, _ = self.prompt_encoder(
-            points = points,
-            boxes = boxes,
-            masks = None,
-        )
-        return sparse_embeddings, all_boxes
     

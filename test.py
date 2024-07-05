@@ -1,42 +1,20 @@
-from utils.tools import gene_max_area_box
-import torch
-from datasets.building_dataset import BuildingDataset
-from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import numpy as np
-import os
-from utils.visualization import show_mask,show_points,show_box
 
-train_dataset = BuildingDataset(
-    data_root = 'source/WHU-Building',
-    mode = 'train',
-)
+# 示例数据
+data = np.random.randn(256, 256)  # 随机生成 10x10 的二维数组
 
-trainloader = DataLoader(
-    train_dataset,
-    batch_size=1,
-    shuffle=True,
-    num_workers=0,
-    drop_last=True)
+# 创建图形
+plt.figure(figsize=(8, 6))
 
-pred_save_dir = 'visual_result/center_point_box'
-os.makedirs(pred_save_dir, exist_ok=True)
-for i_batch, sampled_batch in enumerate(trainloader):
-    mask_1024 = sampled_batch['mask_1024'][0]
-    image_name = sampled_batch['meta_info']['img_name'][0]
-    img = sampled_batch['input_image'][0].permute(1,2,0).numpy()
+# 使用热图显示数据，使用不同的颜色映射（例如 RdBu）
+plt.imshow(data, cmap='RdBu', interpolation='nearest')
 
-    if torch.sum(mask_1024) > 0:
-        center_point,bbox = gene_max_area_box(mask_1024.numpy())
-        coords_torch = torch.as_tensor(np.array([center_point]), dtype=torch.float)
-        labels_torch = torch.ones(len(coords_torch))
-        fig = plt.figure(figsize=(12,12))
-        ax = fig.add_subplot(111)
-        ax.imshow(img)
-        show_mask(mask_1024, ax)
-        show_points(coords_torch, labels_torch, ax)
-        show_box(bbox, ax)
-        plt.tight_layout()
-        plt.savefig(f'{pred_save_dir}/{image_name}')
-        plt.close()
-        
+# 添加颜色条
+plt.colorbar()
+
+# 添加标题
+plt.title('Heatmap with Positive and Negative Values')
+
+# 显示图形
+plt.savefig('test.png')

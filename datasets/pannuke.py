@@ -5,10 +5,11 @@ import random
 import numpy as np
 from torch.utils.data import Dataset
 from torchvision.transforms import InterpolationMode
-from utils import SegLocalVisualizer, SegDataSample, ResizeLongestSide
+from utils import ResizeLongestSide
 from .augment import Pad, RandomFlip, PhotoMetricDistortion
 import torchvision.transforms as T
 from mmengine.structures import PixelData
+import json
 
 
 class PanNukeDataset(Dataset):
@@ -87,6 +88,11 @@ class PanNukeDataset(Dataset):
                 img_name = img_name
             ),
         }
+
+        image_boxes_path = f'{self.data_root}/{part_dir}/ann_boxes_dir/{img_name}.json'
+        with open(image_boxes_path,'r',encoding='utf-8') as f :
+            data['gt_boxes'] = json.load(f)
+            data['coord_ratio'] = 1024 // 256
 
         if self.use_embed:
             img_tensor_path = f'{self.data_root}/{part_dir}/img_tensor/{img_name}.pt'
@@ -177,22 +183,22 @@ class PanNukeDataset(Dataset):
         input_image = torch.as_tensor(input_image).permute(2, 0, 1).contiguous()
         mask = transform.apply_image(image_mask.astype(np.uint8),InterpolationMode.NEAREST)
         
-        aug_img = Pad()(input_image)
+        aug_img = Pad(pad_value=255)(input_image)
         aug_gt = Pad()(torch.as_tensor(mask))
 
         return aug_img, aug_gt
     
-    def _showimg_and_mask(self, aug_img, aug_gt, img_name):
-        save_dir = 'ss_img_vis'
-        seg_local_visualizer = SegLocalVisualizer(
-            save_dir = save_dir,
-            classes = self.METAINFO['classes'],
-            palette = self.METAINFO['palette'],
-            alpha = 0.6
-        )
-        data_sample = SegDataSample()
-        data_sample.set_data({
-            'gt_sem_seg': PixelData(**{'data': aug_gt}),
-        })
-        seg_local_visualizer.add_datasample(img_name, aug_img, data_sample)
+    # def _showimg_and_mask(self, aug_img, aug_gt, img_name):
+    #     save_dir = 'ss_img_vis'
+    #     seg_local_visualizer = SegLocalVisualizer(
+    #         save_dir = save_dir,
+    #         classes = self.METAINFO['classes'],
+    #         palette = self.METAINFO['palette'],
+    #         alpha = 0.6
+    #     )
+    #     data_sample = SegDataSample()
+    #     data_sample.set_data({
+    #         'gt_sem_seg': PixelData(**{'data': aug_gt}),
+    #     })
+    #     seg_local_visualizer.add_datasample(img_name, aug_img, data_sample)
 

@@ -85,7 +85,7 @@ class SamPredictor:
 
         # 图片原始尺寸：(H, W)
         self.original_size = original_image_size
-        # 将最长边拉到 1024 后宽高等比例缩放后得到尺寸：(H, W) 【max(H,W) = 1】
+        # 将最长边拉到 1024 后宽高等比例缩放后得到尺寸：(H, W) 【max(H,W) = 1024】
         self.input_size = tuple(transformed_image.shape[-2:])
         # input_image: (bs, [C]3, [H]1024, [W]1024)
         input_image = self.model.preprocess(transformed_image)

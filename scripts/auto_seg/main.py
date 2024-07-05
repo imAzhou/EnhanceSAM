@@ -1,7 +1,7 @@
 import os
 import torch
 import argparse
-from utils import set_seed, get_logger, get_train_strategy, cls_loss
+from utils import set_seed, get_logger, get_train_strategy, calc_loss
 from models.auto_seg import AutoSegNet
 from tqdm import tqdm
 from datasets.gene_dataloader import gene_loader
@@ -21,7 +21,6 @@ parser.add_argument('--max_epochs', type=int, default=12, help='maximum epoch nu
 parser.add_argument('--debug_mode', action='store_true', help='If activated, log dirname prefis is debug')
 
 # about dataset
-parser.add_argument('--server_name', type=str)
 parser.add_argument('--dataset_name', type=str, default='whu')
 parser.add_argument('--use_aug', action='store_true')
 parser.add_argument('--use_embed', action='store_true')
@@ -80,7 +79,7 @@ def train_one_epoch(model: AutoSegNet, train_loader, optimizer, logger):
             sam_pred_mask_256 = pred_sam_logits.flatten(0, 1) > 0
             seg_gt = sam_pred_mask_256 & gt_mask_256   # shape: (points_per_batch, 256, 256)
             
-            loss = cls_loss(pred_logits=pred_cls_logits, target_masks=seg_gt, args=args)
+            loss = calc_loss(pred_logits=pred_cls_logits, target_masks=seg_gt, args=args)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -195,7 +194,6 @@ def main(logger_name):
     ).to(device)
     # data loader
     train_loader,val_dataloader,metainfo = gene_loader(
-        server_name = args.server_name,
         data_tag = args.dataset_name,
         use_aug = args.use_aug,
         use_embed = args.use_embed,
@@ -272,7 +270,6 @@ if __name__ == "__main__":
 
 '''
 python scripts/auto_seg/main.py \
-    --server_name zucc \
     --max_epochs 10 \
     --dataset_name inria \
     --n_per_side 64 \

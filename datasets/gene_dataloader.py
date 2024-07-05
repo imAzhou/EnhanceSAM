@@ -11,6 +11,8 @@ root_dir = dict(
     remote = '/x22201018/datasets/RemoteSensingDatasets/',
     medical = '/x22201018/datasets/MedicalDatasets/'
 )
+remote_datasets = ['whu', 'inria', 'loveda']
+medical_datasets = ['pannuke', 'pannuke_binary']
 dataset_config = dict(
     whu = 'WHU-Building',
     inria = 'InriaBuildingDataset',
@@ -21,21 +23,23 @@ dataset_config = dict(
 
 def gene_loader(
         *,
-        dataset_domain,
         data_tag,
         use_aug,
         use_embed,
-        use_inner_feat,
+        use_inner_feat = False,
         train_sample_num,
         train_bs,
         val_bs,
-        train_load_parts: None,
-        val_load_parts: None,
+        train_load_parts = None,
+        val_load_parts = None,
 ):
-    assert dataset_domain in root_dir.keys(), \
-        f'the dataset_domain must be in {root_dir.keys()}'
     assert data_tag in dataset_config.keys(), \
         f'the data_tag must be in {dataset_config.keys()}'
+    
+    if data_tag in remote_datasets:
+        dataset_domain = 'remote'
+    if data_tag in medical_datasets:
+        dataset_domain = 'medical'
 
     data_root_dir = f'{root_dir[dataset_domain]}{dataset_config[data_tag]}'
     train_args = dict(
@@ -76,7 +80,8 @@ def gene_loader(
         batch_size = train_bs,
         shuffle = True,
         num_workers = 16,
-        drop_last = True,
+        drop_last = False,
+        collate_fn=collate_fn
     )
     val_dataset = dataset_cls(**val_args)
     val_dataloader = DataLoader(
@@ -84,9 +89,24 @@ def gene_loader(
         batch_size = val_bs,
         shuffle = True,
         num_workers = 16,
-        drop_last = True,
+        drop_last = False,
+        collate_fn=collate_fn
     )
 
     metainfo = train_dataset.METAINFO
     
     return train_dataloader,val_dataloader,metainfo
+
+def collate_fn(batch_data):
+    new_batch_data = {}
+    unstack_keys = ['meta_info', 'gt_boxes', 'original_size','input_size']
+    all_keys = batch_data[0].keys()
+    for key in all_keys:
+        new_batch_data[key] = []
+        for data in batch_data:
+            if key not in unstack_keys:
+                data[key] = torch.as_tensor(data[key])
+            new_batch_data[key].append(data[key])
+        if key not in unstack_keys:
+            new_batch_data[key] = torch.stack(new_batch_data[key])
+    return new_batch_data
