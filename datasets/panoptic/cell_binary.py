@@ -1,6 +1,6 @@
 from .load_embed_dataset import LoadEmbedDataset
 
-class MoNuSegDataset(LoadEmbedDataset):
+class CellBinaryDataset(LoadEmbedDataset):
 
        METAINFO = dict(
         classes=('Background','Cell',),
@@ -10,4 +10,4 @@ class MoNuSegDataset(LoadEmbedDataset):
        )
 
        def __init__(self,**args) -> None:
-              super(MoNuSegDataset, self).__init__(**args)
+              super(CellBinaryDataset, self).__init__(**args)

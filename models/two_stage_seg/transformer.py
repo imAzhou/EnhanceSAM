@@ -9,6 +9,7 @@ from torch import Tensor, nn
 import math
 from typing import Tuple, Type
 from models.sam.modeling import MLPBlock,Attention
+import copy
 
 
 class TwoWayTransformer(nn.Module):
@@ -42,6 +43,7 @@ class TwoWayTransformer(nn.Module):
         self.num_heads = num_heads
         self.mlp_dim = mlp_dim
         self.layers = nn.ModuleList()
+        # self.semantic_layers = nn.ModuleList()
 
         for i in range(depth):
             self.layers.append(
@@ -86,6 +88,7 @@ class TwoWayTransformer(nn.Module):
         """
         # BxCxHxW -> BxHWxC == B x N_image_tokens x C
         image_embedding = image_embedding.flatten(2).permute(0, 2, 1)
+        # semantic_image_embedding = copy.deepcopy(image_embedding)
         image_pe = image_pe.flatten(2).permute(0, 2, 1)
 
         # Prepare queries
@@ -95,7 +98,6 @@ class TwoWayTransformer(nn.Module):
             inter_feat_c256 = inter_feat_c256.flatten(2).permute(0, 2, 1)
         
         # Apply transformer blocks and final layernorm
-        # tow_way_keys = []
         for i,layer in enumerate(self.layers):
             queries, keys = layer(
                 queries=queries,
@@ -103,7 +105,11 @@ class TwoWayTransformer(nn.Module):
                 query_pe=point_embedding,
                 key_pe=image_pe,
             )
+            # semantic_image_embedding = self.semantic_layers[i](semantic_image_embedding)
+            # keys += semantic_image_embedding
+            
             if inter_feat_c256 is not None:
+                # inter_feat_c256 = self.semantic_layers[i](inter_feat_c256)
                 keys += inter_feat_c256
         
         # Apply the final attention layer from the points to the image
@@ -222,9 +228,14 @@ class SemanticModule(nn.Module):
         for i in range(self.sm_depth):
             block = nn.Sequential(
                 nn.Conv2d(embedding_dim, embedding_dim*2, kernel_size=1),
+                nn.BatchNorm2d(embedding_dim*2),
+                nn.ReLU(inplace=True),
                 nn.Conv2d(embedding_dim*2, embedding_dim*2, kernel_size=3, groups=embedding_dim*2, padding='same'),
-                nn.ReLU(),
+                nn.BatchNorm2d(embedding_dim*2),
+                nn.ReLU(inplace=True),
+                # nn.ReLU(),
                 nn.Conv2d(embedding_dim*2, embedding_dim, kernel_size=1),
+                nn.BatchNorm2d(embedding_dim),
             )
             self.local_conv.append(block)
         
@@ -235,7 +246,6 @@ class SemanticModule(nn.Module):
         local_conv_f = tokens.transpose(-1,-2).view(b, c, patch_size, patch_size)
         for block in self.local_conv:
             local_conv_f = block(local_conv_f)
-        # local_conv_f = self.local_conv(tokens.transpose(-1,-2).view(b, c, patch_size, patch_size))
         semantic_tokens = local_conv_f.flatten(2).permute(0, 2, 1)
 
         return semantic_tokens

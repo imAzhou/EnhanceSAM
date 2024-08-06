@@ -52,7 +52,7 @@ def show_anns(anns):
 def draw_semantic_pred(datainfo:DetDataSample, pred_mask, pred_save_dir, coords_torch=None, boxes=None):
     '''
     Args:
-        pred_mask: tensor, shape is (h,w), h=w=1024
+        pred_mask: tensor, shape is (h,w)
         points: tensor, (num_points, 2), 2 is [x,y]
         boxes: tensor, , (num_boxes, 4), 4 is [x1,y1,x2,y2]
     '''

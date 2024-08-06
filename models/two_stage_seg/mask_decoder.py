@@ -26,6 +26,7 @@ class MaskDecoder(nn.Module):
         encoder_embed_dim: int = 1280,
         use_inner_feat = False,
         use_cls_predict = False,
+        use_boundary_head = False,
     ) -> None:
         """
         Predicts masks given an image and prompt embeddings, using a
@@ -50,6 +51,7 @@ class MaskDecoder(nn.Module):
         self.num_mask_tokens = num_mask_tokens
         self.num_classes = num_classes
         self.use_cls_predict = use_cls_predict
+        self.use_boundary_head = use_boundary_head
 
         self.iou_token = nn.Embedding(1, transformer_dim)
         self.mask_tokens = nn.Embedding(self.num_mask_tokens, transformer_dim)
@@ -75,34 +77,41 @@ class MaskDecoder(nn.Module):
         # new paramters
         if use_inner_feat:
             embed_dim, out_chans = encoder_embed_dim, transformer_dim
-
-            self.process_inner_layers = nn.ModuleList()
-            load_idx = [0]
-            for i in load_idx:
-                self.process_inner_layers.append(nn.Sequential(
-                    nn.Conv2d(embed_dim, embed_dim, kernel_size=1),
-                    nn.Conv2d(embed_dim, embed_dim, kernel_size=3, groups=embed_dim, padding='same'),
-                    nn.ReLU()
-                ))
-                
-            self.merge_inner = nn.Sequential(
+            # self.process_inter_feat = nn.Sequential(
+            #     nn.Conv2d(embed_dim, embed_dim, kernel_size=1),
+            #     nn.BatchNorm2d(embed_dim),
+            #     nn.ReLU(inplace=True),
+            #     nn.Conv2d(embed_dim, embed_dim, kernel_size=3, groups=embed_dim, padding='same'),
+            #     nn.BatchNorm2d(embed_dim),
+            #     nn.ReLU(),
+            #     nn.Conv2d(embed_dim, embed_dim//2, kernel_size=1),
+            #     nn.BatchNorm2d(embed_dim//2),
+            #     nn.ReLU(),
+            #     nn.Conv2d(embed_dim//2, out_chans, kernel_size=1),
+            #     nn.BatchNorm2d(out_chans),
+            # )
+            self.process_inter_feat = nn.Sequential(
+                nn.Conv2d(embed_dim, embed_dim, kernel_size=1),
+                nn.Conv2d(embed_dim, embed_dim, kernel_size=3, groups=embed_dim, padding='same'),
+                nn.ReLU(),
                 nn.Conv2d(embed_dim, embed_dim//2, kernel_size=1),
                 nn.ReLU(),
-                nn.Conv2d(embed_dim//2, out_chans, kernel_size=1),
+                nn.Conv2d(embed_dim//2, out_chans, kernel_size=1)
             )
-            # self.upscaling_inter_feat = nn.Sequential(
-            #     nn.ConvTranspose2d(embed_dim, transformer_dim, kernel_size=2, stride=2),
-            #     LayerNorm2d(transformer_dim),
-            #     nn.GELU(), 
-            #     nn.ConvTranspose2d(transformer_dim, transformer_dim // 8, kernel_size=2, stride=2)
-            # )
+
         if use_cls_predict:
             self.cls_token = nn.Embedding(1, transformer_dim)
             ouput_cls = 1 if self.num_classes < 0 else self.num_classes
             self.cls_prediction_head = MLP(
                 transformer_dim, transformer_dim//2, ouput_cls, iou_head_depth
             )
-            
+        if use_boundary_head:
+            self.output_boundary_mlps = nn.ModuleList(
+                [
+                    MLP(transformer_dim, transformer_dim, transformer_dim // 8, 3)
+                    for i in range(self.num_mask_tokens)
+                ]
+            )
     def forward(
         self,
         image_embeddings: torch.Tensor,
@@ -205,16 +214,8 @@ class MaskDecoder(nn.Module):
         
         # Run the transformer
         inter_feat_c256 = None
-        # if self.use_inner_feat:
-        #     inter_feat_c256 = self.process_inter_feat(inter_feature.permute(0, 3, 1, 2))
         if self.use_inner_feat:
-            inner_c256 = []
-            inter_feature = inter_feature.permute(1,0,2,3,4)
-            for inner_t,layer in zip(inter_feature, self.process_inner_layers):
-                inter_f_c256 = layer(inner_t.permute(0, 3, 1, 2))    # (bs, 1280, 64, 64)
-                inner_c256.append(inter_f_c256)
-            merged_inner_c256 = torch.stack(inner_c256, dim=1).sum(dim=1)
-            inter_feat_c256 = self.merge_inner(merged_inner_c256)    # (bs, 256, 64, 64)
+            inter_feat_c256 = self.process_inter_feat(inter_feature.permute(0, 3, 1, 2))
         
         hs, src = self.transformer(src, pos_src, tokens, inter_feat_c256)
         iou_token_out = hs[:, 0, :]
@@ -223,10 +224,6 @@ class MaskDecoder(nn.Module):
         # Upscale mask embeddings and predict masks using the mask tokens
         src = src.transpose(1, 2).view(b, c, h, w)
         upscaled_embedding = self.output_upscaling(src)
-
-        # if self.use_inner_feat:
-        #     upscaled_inner_embedding = self.upscaling_inter_feat(inter_feature[:,0,...].permute(0, 3, 1, 2))
-        #     upscaled_embedding += upscaled_inner_embedding
 
         hyper_in_list: List[torch.Tensor] = []
         for i in range(self.num_mask_tokens):
@@ -245,6 +242,15 @@ class MaskDecoder(nn.Module):
             'upscaled_embedding': upscaled_embedding,
             'mask_tokens_out': mask_tokens_out,
         }
+
+        if self.use_boundary_head:
+            boundary_in_list: List[torch.Tensor] = []
+            for i in range(self.num_mask_tokens):
+                boundary_in_list.append(self.output_boundary_mlps[i](mask_tokens_out[:, i, :]))
+            boundary_in = torch.stack(boundary_in_list, dim=1)
+            b, c, h, w = upscaled_embedding.shape
+            boundary_masks = (boundary_in @ upscaled_embedding.view(b, c, h * w)).view(b, -1, h, w)
+            outputs['logits_256'] = torch.cat((masks,boundary_masks),dim=1)
 
         return outputs
 

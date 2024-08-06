@@ -14,6 +14,8 @@ from mmdet.evaluation.functional import INSTANCE_OFFSET
 from scipy.ndimage import binary_dilation, binary_erosion
 import matplotlib.pyplot as plt
 
+from utils.ssim_loss import SSIM
+
 parser = argparse.ArgumentParser()
 
 # base args
@@ -21,6 +23,7 @@ parser.add_argument('dataset_config_file', type=str)
 parser.add_argument('--record_save_dir', type=str)
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
 parser.add_argument('--print_interval', type=int, default=10, help='random seed')
+parser.add_argument('--metrics', nargs='*', type=str, default=['pixel', 'inst'])
 parser.add_argument('--device', type=str, default='cuda:0')
 
 args = parser.parse_args()
@@ -40,99 +43,85 @@ def extract_boundary(mask):
     boundary = dilated_mask ^ eroded_mask
     return boundary
 
-# 生成边界掩码函数
-def get_boundary_mask(mask):
-    boundary = extract_boundary(mask)
-    return torch.from_numpy(boundary).float()
-
-# 可视化函数
-def visualize_boundary(original, boundary):
-    plt.figure(figsize=(12, 6))
-    
-    plt.subplot(1, 2, 1)
-    plt.title('Original Image')
-    plt.imshow(original)
-    
-    plt.subplot(1, 2, 2)
-    plt.title('Boundary Image')
-    plt.imshow(boundary, cmap='gray')
-    
-    plt.savefig('boundary.png')
 
 def train_one_epoch(model: TwoStageNet, train_loader, optimizer, logger, cfg):
 
     model.train()
     len_loader = len(train_loader)
+    # ssim_loss_fn = SSIM(window_size=11,size_average=True)
+
     for i_batch, sampled_batch in enumerate(tqdm(train_loader, ncols=70)):
         gt_mask = []
+        origin_h,origin_w = sampled_batch['data_samples'][0].ori_shape
         for data_sample in sampled_batch['data_samples']:
             gt_sem_seg = data_sample.gt_sem_seg.sem_seg
             gt_mask.append(gt_sem_seg)
         gt_mask = torch.cat(gt_mask, dim = 0).to(device)    # (bs, h, w)
-        if gt_mask.shape[-1] != 256:
-            gt_mask = F.interpolate(gt_mask.float().unsqueeze(1), (256, 256), mode="nearest").squeeze(1)
-        outputs = model.forward_coarse(sampled_batch, cfg.train_prompt_type)
-        logits = outputs['logits_256']  # (bs or k_prompt, 1, 256, 256)
+        origin_size = sampled_batch['data_samples'][0].ori_shape
+        gt_mask = F.interpolate(gt_mask.unsqueeze(1).float(), origin_size).squeeze(1)
+        outputs = model.forward_coarse(sampled_batch)
+        logits = outputs['logits_origin']  # (bs or k_prompt, 1, h, w)
         
-        bs1,bs2 = gt_mask.shape[0], logits.shape[0]
-        if bs2 > bs1:
-            gt_mask = torch.repeat_interleave(gt_mask, bs2, dim=0)
-        loss = calc_loss(pred_logits=logits, target_masks=gt_mask, args=cfg)
+        target_masks = gt_mask.reshape(-1, origin_h, origin_w)
+        pred_logits = logits.reshape(-1, origin_h, origin_w).unsqueeze(1)
+        bce_dice_loss = calc_loss(pred_logits=pred_logits, target_masks=target_masks, args=cfg)
+        # ssim_loss = 1 - ssim_loss_fn(F.sigmoid(pred_logits),target_masks.unsqueeze(1))
+        loss = bce_dice_loss
         
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         
         if (i_batch+1) % args.print_interval == 0:
-            logger.info(f'iteration {i_batch+1}/{len_loader}: loss: {loss.item():.6f}')
+            logger.info(f'iteration {i_batch+1}/{len_loader}, bce_dice_loss: {bce_dice_loss.item():.6f}')
 
 def val_one_epoch(model: TwoStageNet, val_loader, evaluators, cfg):
     
     model.eval()
     for i_batch, sampled_batch in enumerate(tqdm(val_loader, ncols=70)):
-        bs_gt_mask,origin_size = [],None
-        for data_sample in sampled_batch['data_samples']:
-            gt_sem_seg = data_sample.gt_sem_seg.sem_seg
-            bs_gt_mask.append(gt_sem_seg)
-            origin_size = data_sample.ori_shape
 
-        bs_gt_mask = torch.cat(bs_gt_mask, dim = 0).to(device)
-        outputs = model.forward_coarse(sampled_batch, cfg.val_prompt_type)
-        logits = outputs['logits_256']  # (bs or k_prompt, 1, 256, 256)
-        bs_pred_mask = (logits>0).detach()
-        bs_pred_origin = F.interpolate(bs_pred_mask.type(torch.uint8), origin_size, mode="nearest")
+        origin_h,origin_w = sampled_batch['data_samples'][0].ori_shape
+        outputs = model.forward_coarse(sampled_batch)
+        logits = outputs['logits_origin']  # (bs or k_prompt, 1, origin_h, origin_w)
+        bs_pred_origin = (logits>0).detach().type(torch.uint8)
 
         all_datainfo = []
         for idx,datainfo in enumerate(sampled_batch['data_samples']):
             datainfo.pred_sem_seg = PixelData(sem_seg=bs_pred_origin[idx])
-            pred_logits = logits[idx][0].detach().cpu()
-            pred_inst_mask = evaluators['inst_evaluator'].find_connect(pred_logits)
-            panoptic_seg = torch.full((256, 256), 0, dtype=torch.int32, device=device)
-            if np.sum(pred_inst_mask) > 0:
-                iid = np.unique(pred_inst_mask)
-                for i in iid[1:]:
-                    mask = pred_inst_mask == i
-                    panoptic_seg[mask] = (1 + i * INSTANCE_OFFSET)
-            datainfo.pred_panoptic_seg = PixelData(sem_seg=panoptic_seg[None])
-            all_datainfo.append(datainfo.to_dict())
-
-            gt_inst_seg = datainfo.gt_instances.masks.masks  # np.array, (inst_nums, h, w)
-            gt_inst_mask = onehot2instmask(gt_inst_seg)    # tensor, (h, w)
             
-            evaluators['inst_evaluator'].process(gt_inst_mask, pred_logits)
+            if 'inst' in args.metrics or 'panoptic' in args.metrics:
+                gt_inst_seg = datainfo.gt_instances.masks.masks  # np.array, (inst_nums, h, w)
+                gt_inst_mask = onehot2instmask(gt_inst_seg)    # tensor, (h, w)
+                pred_cell_mask = (logits[idx,0,:,:].detach() > 0).type(torch.uint8)
+                pred_inst_mask = evaluators['inst_evaluator'].find_connect(pred_cell_mask)
+                if 'inst' in args.metrics:
+                    evaluators['inst_evaluator'].process(gt_inst_mask, pred_inst_mask)
+                panoptic_seg = torch.full((origin_h,origin_w), 0, dtype=torch.int32, device=device)
+                if np.sum(pred_inst_mask) > 0:
+                    iid = np.unique(pred_inst_mask)
+                    for i in iid[1:]:
+                        mask = pred_inst_mask == i
+                        panoptic_seg[mask] = (1 + i * INSTANCE_OFFSET)
+                datainfo.pred_panoptic_seg = PixelData(sem_seg=panoptic_seg[None])
+
+            all_datainfo.append(datainfo.to_dict())
         
         evaluators['semantic_evaluator'].process(None, all_datainfo)
-        evaluators['panoptic_evaluator'].process(None, all_datainfo)
+        if 'panoptic' in args.metrics:
+            evaluators['panoptic_evaluator'].process(None, all_datainfo)
     
     total_datas = len(val_loader)*cfg.val_bs
     semantic_metrics = evaluators['semantic_evaluator'].evaluate(total_datas)
-    panoptic_metrics = evaluators['panoptic_evaluator'].evaluate(total_datas)
-    inst_metrics = evaluators['inst_evaluator'].evaluate(total_datas)
     metrics = dict(
         semantic = semantic_metrics,
-        panoptic = panoptic_metrics,
-        inst = inst_metrics,
     )
+    
+    if 'inst' in args.metrics:
+        inst_metrics = evaluators['inst_evaluator'].evaluate(total_datas)
+        metrics['inst'] = inst_metrics
+    if 'panoptic' in args.metrics:
+        panoptic_metrics = evaluators['panoptic_evaluator'].evaluate(total_datas)
+        metrics['panoptic'] = panoptic_metrics
     return metrics
 
 
@@ -147,8 +136,9 @@ def main(logger_name, cfg):
                 num_mask_tokens = cfg.num_mask_tokens,
                 sm_depth = cfg.semantic_module_depth,
                 use_inner_feat = cfg.use_inner_feat,
-                use_embed = True,
+                use_embed = cfg.dataset.load_embed,
                 sam_ckpt = cfg.sam_ckpt,
+                sam_type = cfg.sam_type,
                 device = device
             ).to(device)
     
@@ -159,7 +149,7 @@ def main(logger_name, cfg):
     # get optimizer and lr_scheduler
     optimizer,lr_scheduler = get_train_strategy(model, cfg)
     # get evaluator
-    evaluators = get_metrics(['pixel','inst'], metainfo, restinfo)
+    evaluators = get_metrics(args.metrics, metainfo, restinfo)
 
     # train and val in each epoch
     all_metrics,all_value = [],[]
@@ -177,8 +167,12 @@ def main(logger_name, cfg):
 
         # val
         metrics = val_one_epoch(model, val_dataloader, evaluators, cfg)
-        best_score = metrics['inst']['AJI']
-        # logger.info(f'epoch: {epoch_num} ' + str(metrics) + '\n')
+        # if 'inst' in args.metrics:
+        #     best_score = metrics['inst']['AJI']
+        # if 'panoptic' in args.metrics:
+        #     best_score = metrics['panoptic']['coco_panoptic/PQ_th']
+        # else:
+        best_score = metrics['semantic']['mIoU']
         if best_score > max_value:
             max_value = best_score
             max_epoch = epoch_num
@@ -221,7 +215,9 @@ if __name__ == "__main__":
 
 
 '''
+# 02: 不更新 output_upscaling, 没有 ssim loss, mobilev2 结构没有残差连接
 python scripts/panoptic/binary/coarse_main.py \
-    configs/datasets/monuseg.py \
-    --record_save_dir logs/coarse/train_all_ours/monuseg_p256
+    configs/datasets/mass.py \
+    --record_save_dir logs/ablation/mass \
+    --metrics pixel
 '''

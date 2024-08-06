@@ -1,5 +1,5 @@
-data_root = '/x22201018/datasets/MedicalDatasets/MoNuSeg'
-dataset_tag = 'monuseg'
+data_root = '/x22201018/datasets/RemoteSensingDatasets/MassachusettsBuilding'
+dataset_tag = 'mass'
 data_pipeline = [
     dict(
         type='LoadImageFromFile',
@@ -26,8 +26,8 @@ dataset = dict(
     load_embed = True,
 )
 
-train_load_parts = ['train_p256']
-val_load_parts = ['test_p256']
+train_load_parts = ['train_p500']
+val_load_parts = ['test_p500']
 
 train_bs = 4
 val_bs = 4

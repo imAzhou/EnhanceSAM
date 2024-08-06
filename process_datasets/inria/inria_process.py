@@ -11,7 +11,7 @@ import albumentations as albu
 
 import random
 
-SEED = 42
+SEED = 1234
 
 
 def seed_everything(seed):
@@ -28,17 +28,16 @@ Building = np.array([255, 255, 255])  # label 0
 Clutter = np.array([0, 0, 0]) # label 1
 num_classes = 2
 
-# cp -r -u -v /x22201018/datasets/RemoteSensingDatasets/WHU-Building datasets/WHU-Building
 root_dir = '/x22201018/datasets/RemoteSensingDatasets/InriaBuildingDataset'
-target_dir = f'datasets/InriaBuildingDataset'
+target_dir = f'/x22201018/datasets/RemoteSensingDatasets/InriaBuildingDataset'
 
 # split huge RS image to small patches
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-img-dir", default=f"{root_dir}/val_images")
     parser.add_argument("--input-mask-dir", default=f"{root_dir}/val_masks")
-    parser.add_argument("--output-img-dir", default=f"{target_dir}/img_dir/val")
-    parser.add_argument("--output-mask-dir", default=f"{target_dir}/ann_dir/val")
+    parser.add_argument("--output-img-dir", default=f"{target_dir}/val_new/img_dir")
+    parser.add_argument("--output-mask-dir", default=f"{target_dir}/val_new/ann_dir")
     parser.add_argument("--mode", type=str, default='val')
     parser.add_argument("--split-size-h", type=int, default=512)
     parser.add_argument("--split-size-w", type=int, default=512)
@@ -153,7 +152,7 @@ def patch_format(inp):
                     bins = np.array(range(num_classes + 1))
                     class_pixel_counts, _ = np.histogram(mask_tile, bins=bins)
                     cf = class_pixel_counts / (mask_tile.shape[0] * mask_tile.shape[1])
-                    if cf[0] > 0.05:
+                    if cf[0] > 0.:
                         if mode == 'train':
                             img_tile = cv2.cvtColor(img_tile, cv2.COLOR_RGB2BGR)
                             out_img_path = os.path.join(imgs_output_dir, "{}_{}_{}.png".format(id, m, k))
@@ -206,8 +205,8 @@ if __name__ == "__main__":
            for img_path, mask_path in zip(img_paths, mask_paths)]
 
     t0 = time.time()
-    # mpp.Pool(processes=mp.cpu_count()).map(patch_format, inp)
-    mpp.Pool(processes=1).map(patch_format, inp)
+    mpp.Pool(processes=mp.cpu_count()).map(patch_format, inp)
+    # mpp.Pool(processes=1).map(patch_format, inp)
     t1 = time.time()
     split_time = t1 - t0
     print('images spliting spends: {} s'.format(split_time))

@@ -18,7 +18,9 @@ class TwoStageNet(nn.Module):
                  use_embed = False,
                  split_self_attn = False,
                  use_cls_predict = False,
+                 use_boundary_head = False,
                  sam_ckpt = None,
+                 sam_type = 'vit_h',
                  device = None,
                 ):
         '''
@@ -28,6 +30,7 @@ class TwoStageNet(nn.Module):
             - sm_depth: the depth of semantic module in transformer, 0 means don't use this module.
         '''
         super(TwoStageNet, self).__init__()
+        assert sam_type in ['vit_b','vit_l','vit_h'], "sam_type must be in ['vit_b','vit_l','vit_h']"
 
         self.use_inner_feat = use_inner_feat
         self.use_embed = use_embed
@@ -36,15 +39,21 @@ class TwoStageNet(nn.Module):
         self.num_mask_tokens = num_mask_tokens
         self.device = device
         
-        sam = sam_model_registry['vit_h'](checkpoint = sam_ckpt)
+        sam = sam_model_registry[sam_type](checkpoint = sam_ckpt)
         self.image_encoder = sam.image_encoder
         self.prompt_encoder = sam.prompt_encoder
         self.preprocess = sam.preprocess
         self.postprocess_masks = sam.postprocess_masks
 
+        encoder_embed_dim = {
+            'vit_b': 768,
+            'vit_l': 1024,
+            'vit_h': 1280
+        }
         self.mask_decoder = MaskDecoder(
             num_mask_tokens = num_mask_tokens,
             num_classes = num_classes,
+            encoder_embed_dim = encoder_embed_dim[sam_type],
             transformer = TwoWayTransformer(
                 sm_depth = sm_depth,
                 split_self_attn = split_self_attn,
@@ -52,6 +61,7 @@ class TwoStageNet(nn.Module):
             ),
             use_inner_feat = use_inner_feat,
             use_cls_predict = use_cls_predict,
+            use_boundary_head = use_boundary_head,
         )
 
         self.load_sam_parameters(sam.mask_decoder.state_dict())
@@ -86,14 +96,13 @@ class TwoStageNet(nn.Module):
 
         update_param = [
             'semantic_module',
-            'process_inner_layers',
-            'merge_inner',
-            'upscaling_inter_feat',
+            'process_inter_feat',
             'mask_tokens',
-            'output_upscaling',
+            # 'output_upscaling',
             'output_hypernetworks_mlps',
             'cls_token',
             'cls_prediction_head',
+            'output_boundary_mlps'
             # 'transformer'
         ]
 
@@ -125,48 +134,17 @@ class TwoStageNet(nn.Module):
         print(self.mask_decoder.load_state_dict(state_dict['mask_decoder'], strict = False))
         print('='*59)
 
-    def forward_coarse(self, sampled_batch, prompt_type):
+    def forward_coarse(self, sampled_batch, multimask_output=False):
         
         bs_image_embedding,inter_feature = self.gene_img_embed(sampled_batch)
-
-        type_to_repeat = dict(
-            max_bbox = 2,
-            random_bbox = 2,
-            random_point = 2,
-            max_bbox_center_point = 2,
-            max_bbox_with_point = 3,
-            all_bboxes = 0
+        sparse_embeddings, dense_embeddings = self.prompt_encoder(
+            points = None,
+            boxes = None,
+            masks = None,
         )
-        bs_sparse_embedding = []
-        bs_prompt = []
         bs = len(sampled_batch['inputs'])
-        input_size,origin_size = None,None
-        for idx in range(bs):
-            datainfo: DetDataSample = sampled_batch['data_samples'][idx]
-            input_size,origin_size = datainfo.img_shape,datainfo.ori_shape
-            boxes, points = None, None
-            if prompt_type is not None:
-                # all_gtboxes.shape: (k, 4)
-                all_gtboxes = datainfo.gt_instances.bboxes.tensor.numpy()
-                coord_ratio = 1024 // datainfo.img_shape[0]
-                boxes, points, _ = get_prompt(prompt_type, None, all_gtboxes, self.device, coord_ratio)
-
-            sparse_embeddings, dense_embeddings = self.prompt_encoder(
-                points = points,
-                boxes = boxes,
-                masks = None,
-            )
-            if sparse_embeddings.shape[1] == 0 and prompt_type is not None:
-                repeat_num = type_to_repeat[prompt_type]
-                sparse_embeddings = self.prompt_encoder.not_a_point_embed.weight.unsqueeze(0)
-                sparse_embeddings = torch.repeat_interleave(sparse_embeddings, repeat_num, dim=1)
-            bs_sparse_embedding.append(sparse_embeddings)
-        
-            bs_prompt.append(dict(
-                points = points,
-                boxes = boxes,
-            ))
-        bs_sparse_embedding = torch.cat(bs_sparse_embedding, dim=0)
+        bs_sparse_embedding = torch.repeat_interleave(sparse_embeddings, bs, dim=0)
+        bs_dense_embeddings = torch.repeat_interleave(dense_embeddings, bs, dim=0)
         
         image_pe = self.prompt_encoder.get_dense_pe()
         # low_res_masks.shape: (bs, num_cls, 256, 256)
@@ -174,19 +152,18 @@ class TwoStageNet(nn.Module):
             image_embeddings = bs_image_embedding,
             image_pe = image_pe,
             sparse_prompt_embeddings = bs_sparse_embedding,
-            dense_prompt_embeddings = dense_embeddings,
+            dense_prompt_embeddings = bs_dense_embeddings,
             inter_feature = inter_feature,
-            multimask_output = True
+            multimask_output = multimask_output
         )
-        logits_1024 = F.interpolate(
+        origin_size = sampled_batch['data_samples'][0].ori_shape
+        logits_origin = F.interpolate(
             decoder_outputs['logits_256'],
-            (1024, 1024),
+            origin_size,
             mode="bilinear",
             align_corners=False,
         )
-        logits_origin = self.postprocess_masks(logits_1024, input_size, origin_size)
         decoder_outputs['logits_origin'] = logits_origin
-        decoder_outputs['prompts'] = bs_prompt
         
         return decoder_outputs
     
@@ -313,11 +290,13 @@ class TwoStageNet(nn.Module):
         else:
             with torch.no_grad():
                 # input_images.shape: [bs, 3, 1024, 1024]
-                input_images = self.preprocess(sampled_batch['input']).to(self.device)
+                image_tensor = torch.stack(sampled_batch['inputs'])  # (bs, 3, 1024, 1024), 3 is bgr
+                image_tensor_rgb = image_tensor[:, [2, 1, 0], :, :]
+                input_images = self.preprocess(image_tensor_rgb).to(self.device)  
                 # bs_image_embedding.shape: [bs, c=256, h=64, w=64]
                 if self.use_inner_feat:
                     bs_image_embedding,inter_feature = self.image_encoder(input_images, need_inter=True)
-                    bs_image_embedding,inter_feature = bs_image_embedding.detach(),inter_feature.detach()
+                    bs_image_embedding,inter_feature = bs_image_embedding.detach(),inter_feature[0].detach()
                 else:
                     bs_image_embedding = self.image_encoder(input_images, need_inter=False).detach()
                     inter_feature = None

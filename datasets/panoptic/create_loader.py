@@ -3,10 +3,12 @@ from mmengine.dataset.sampler import DefaultSampler
 from mmengine.dataset import pseudo_collate
 from mmengine.registry import init_default_scope
 from mmengine.config import Config
-from .pannuke import PanNukeDataset,PanNukeBinaryDataset
-from .monuseg import MoNuSegDataset
+from .pannuke import PanNukeDataset
+from .cell_binary import CellBinaryDataset
+from .isaid_binary import iSAIDBinaryDataset
+from .building_binary import BuildingBinaryDataset
 
-support_datasets = ['whu', 'inria', 'loveda', 'pannuke', 'pannuke_binary', 'monuseg']
+support_datasets = ['whu', 'inria', 'isaid','mass', 'pannuke', 'pannuke_binary', 'monuseg', 'cpm17']
 
 def gene_loader_trainval(
         *,
@@ -23,10 +25,12 @@ def gene_loader_trainval(
     
     dataset_config['load_parts'] = dataset_config['train_load_parts']
     dataloader_config['batch_size'] = dataset_config['train_bs']
+    # dataset_config['dataset']['pipeline'] = dataset_config['train_data_pipeline']
     train_dataloader,metainfo = create_dataset_loader(dataset_config, dataloader_config, dataset_tag)
 
     dataset_config['load_parts'] = dataset_config['val_load_parts']
     dataloader_config['batch_size'] = dataset_config['val_bs']
+    # dataset_config['dataset']['pipeline'] = dataset_config['val_data_pipeline']
     val_dataloader,metainfo = create_dataset_loader(dataset_config, dataloader_config, dataset_tag)
 
     part = dataset_config['val_load_parts'][0]
@@ -66,6 +70,7 @@ def gene_loader_eval(
 
     dataset_config['load_parts'] = dataset_config['val_load_parts']
     dataloader_config['batch_size'] = dataset_config['val_bs']
+    # dataset_config['dataset']['pipeline'] = dataset_config['val_data_pipeline']
     dataloader,metainfo = create_dataset_loader(dataset_config, dataloader_config, dataset_tag)
 
     part = dataset_config['val_load_parts'][0]
@@ -103,12 +108,15 @@ def create_dataset_loader(
         d_cfg.data_root = f'{data_root}/{part}'
         if dataset_tag == 'pannuke':
             dataset = PanNukeDataset(**d_cfg)
+
+        if dataset_tag == 'isaid':
+            dataset = iSAIDBinaryDataset(**d_cfg)
         
-        if dataset_tag == 'pannuke_binary':
-            dataset = PanNukeBinaryDataset(**d_cfg)
+        if dataset_tag in ['whu', 'inria', 'mass']:
+            dataset = BuildingBinaryDataset(**d_cfg)
         
-        if dataset_tag == 'monuseg':
-            dataset = MoNuSegDataset(**d_cfg)
+        if dataset_tag in ['pannuke_binary', 'monuseg', 'cpm17']:
+            dataset = CellBinaryDataset(**d_cfg)
         
         all_datasets.append(dataset)
 

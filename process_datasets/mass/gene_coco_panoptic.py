@@ -1,7 +1,7 @@
 from process_datasets.twochannel2coco_panoptic import converter
 
-data_root = '/x22201018/datasets/MedicalDatasets/MoNuSeg'
-size = 512
+data_root = '/x22201018/datasets/RemoteSensingDatasets/MassachusettsBuilding'
+size = 500
 
 for overlap in [0]:
     for mode in ['train', 'val', 'test']:

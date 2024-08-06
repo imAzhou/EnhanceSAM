@@ -22,8 +22,9 @@ parser.add_argument('dataset_config_file', type=str)
 parser.add_argument('save_dir', type=str)
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
 parser.add_argument('--vis_nums', type=int, default=-1)
+parser.add_argument('--show_bbox', action='store_true')
 
-def draw_dataset_gt(img, data_sample: DetDataSample, save_path, metainfo):
+def draw_dataset_gt(img, data_sample: DetDataSample, save_path, metainfo, show_bbox = True):
     classes = metainfo['classes']
     palette = metainfo['palette']
 
@@ -35,10 +36,11 @@ def draw_dataset_gt(img, data_sample: DetDataSample, save_path, metainfo):
     ax = fig.add_subplot(111)
     ax.imshow(img)
     show_multi_mask(gt_mask, ax, palette)
-    for box,cls_id in zip(gt_boxes, boxes_clsids): 
-        cls_color = palette[cls_id]
-        edgecolor = np.array([cls_color[0]/255, cls_color[1]/255, cls_color[2]/255, 1])
-        show_box(box, ax, edgecolor=edgecolor)
+    if show_bbox:
+        for box,cls_id in zip(gt_boxes, boxes_clsids): 
+            cls_color = palette[cls_id]
+            edgecolor = np.array([cls_color[0]/255, cls_color[1]/255, cls_color[2]/255, 1])
+            show_box(box, ax, edgecolor=edgecolor)
     ax.set_title('GT info')
     patches = [mpatches.Patch(facecolor=np.array(palette[i])/255., label=classes[i], edgecolor='black') for i in range(len(classes))]
     plt.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., fontsize='large')
@@ -77,8 +79,8 @@ def main():
         data_sample.gt_instances = gt_instances
 
         out_file = f'{args.save_dir}/{filename}'
-        draw_dataset_gt(img, data_sample, out_file, metainfo)
-        print(f'{filename} cell number: {len(gt_instances.bboxes)}')
+        draw_dataset_gt(img, data_sample, out_file, metainfo, args.show_bbox)
+        print(f'{filename} instances number: {len(gt_instances.bboxes)}')
 
 
 if __name__ == '__main__':
@@ -86,7 +88,8 @@ if __name__ == '__main__':
 
 '''
 python process_datasets/browse_dataset.py \
-    configs/datasets/monuseg.py \
-    visual_results/gt_visual/monuseg_p256 \
-    --vis_nums 5
+    configs/datasets/mass.py \
+    visual_results/gt_visual/mass \
+    --vis_nums 5 \
+    --show_bbox
 '''

@@ -31,17 +31,17 @@ class LoadEmbedDataset(CocoPanopticDataset):
                 image_embedding = torch.load(prestore_embed_path)
                 pipeline_data_info['img_embed'] = image_embedding
 
-                all_inner_t = []
-                for i in [0]:
-                    prestore_inner_embed_path = f'{root_path}/{purename}_inner_{i}.pt'
-                    inter_feat = torch.load(prestore_inner_embed_path)
-                    all_inner_t.append(inter_feat)
-                all_inner_t = torch.stack(all_inner_t)
-                pipeline_data_info['inter_feat'] = all_inner_t
+                # all_inner_t = []
+                # for i in [0]:
+                #     prestore_inner_embed_path = f'{root_path}/{purename}_inner_{i}.pt'
+                #     inter_feat = torch.load(prestore_inner_embed_path)
+                #     all_inner_t.append(inter_feat)
+                # all_inner_t = torch.stack(all_inner_t)
+                # pipeline_data_info['inter_feat'] = all_inner_t
                 
-              #   prestore_inner_embed_path = f'{root_path}/{purename}_inner_0.pt'
-              #   inter_feat = torch.load(prestore_inner_embed_path)
-              #   pipeline_data_info['inter_feat'] = inter_feat
+                prestore_inner_embed_path = f'{root_path}/{purename}_inner_0.pt'
+                inter_feat = torch.load(prestore_inner_embed_path)
+                pipeline_data_info['inter_feat'] = inter_feat
                    
             return pipeline_data_info
        

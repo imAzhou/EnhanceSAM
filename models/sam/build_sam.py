@@ -5,44 +5,40 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
-from torch.nn import functional as F
 from functools import partial
 
 from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
 
-def build_sam_vit_h(image_size=1024, checkpoint=None,):
+def build_sam_vit_h(checkpoint=None,):
     return _build_sam(
         encoder_embed_dim=1280,
         encoder_depth=32,
         encoder_num_heads=16,
         encoder_global_attn_indexes=[7, 15, 23, 31],
-        checkpoint=checkpoint,
-        image_size=image_size,
+        checkpoint=checkpoint
     )
 
 
 build_sam = build_sam_vit_h
 
 
-def build_sam_vit_l(checkpoint=None,multi_feature: bool = False):
+def build_sam_vit_l(checkpoint=None):
     return _build_sam(
         encoder_embed_dim=1024,
         encoder_depth=24,
         encoder_num_heads=16,
         encoder_global_attn_indexes=[5, 11, 17, 23],
-        checkpoint=checkpoint,
-        multi_feature=multi_feature
+        checkpoint=checkpoint
     )
 
 
-def build_sam_vit_b(checkpoint=None,multi_feature: bool = False):
+def build_sam_vit_b(checkpoint=None):
     return _build_sam(
         encoder_embed_dim=768,
         encoder_depth=12,
         encoder_num_heads=12,
         encoder_global_attn_indexes=[2, 5, 8, 11],
-        checkpoint=checkpoint,
-        multi_feature=multi_feature
+        checkpoint=checkpoint
     )
 
 
@@ -59,11 +55,10 @@ def _build_sam(
     encoder_depth,
     encoder_num_heads,
     encoder_global_attn_indexes,
-    image_size,
     checkpoint=None
 ):
     prompt_embed_dim = 256
-    image_size = image_size
+    image_size = 1024
     vit_patch_size = 16
     image_embedding_size = image_size // vit_patch_size
     sam = Sam(
@@ -106,6 +101,6 @@ def _build_sam(
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
             state_dict = torch.load(f)
-            sam.load_state_dict(state_dict)
+        sam.load_state_dict(state_dict)
             
     return sam

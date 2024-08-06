@@ -1,72 +1,31 @@
-'''
-See details in https://github.com/cocodataset/panopticapi
-
-This file function:
-    1. generate panoptic annotation json file, which format like:
-        ann_json = dict(
-            images = [{
-                'file_name': '000000001268.jpg',
-                'height': 427,
-                'width': 640,
-                'id': 1268,
-            }],
-            categories = [{
-                {'id': 0, 'name': 'person', 'isthing': 0 or 1, 'color':[R,G,B], 'supercategory': 'cell' }
-            }]
-        )
-    2. generate panoptic annotation mask png, which have 2 channels, channel 0 means semantic category label, channel 1 means instance ID label, stored by np.uint32.
-'''
-
+from scipy.io import loadmat
 import os
 import cv2
 import numpy as np
 import json
 from tqdm import tqdm
-import xml.etree.ElementTree as ET
 import tifffile
-from skimage import draw
-import matplotlib.pyplot as plt
 import cv2
-from mmdet.structures.mask import mask2bbox
-from utils import show_mask,show_box
 import torch
 import torch.nn.functional as F
 from einops import rearrange
 
-root = '/x22201018/datasets/MedicalDatasets/MoNuSeg'
+root = '/x22201018/datasets/RemoteSensingDatasets/MassachusettsBuilding'
 modes = ['train', 'val', 'test']
 BACKGROUND_ID = 1
-CELL_ID = 2
-palette=[[255, 255, 255], [47, 243, 15]]
+FOREGROUND_ID = 2
+palette=[[255, 255, 255], [244, 251, 4]]
 categories_info = [
     {'id': BACKGROUND_ID, 'name': 'Background', 'isthing': 0, 'color':palette[0], 'supercategory': '' },
-    {'id': CELL_ID, 'name': 'Cell', 'isthing': 1, 'color':palette[1], 'supercategory': '' }
+    {'id': FOREGROUND_ID, 'name': 'Building', 'isthing': 1, 'color':palette[1], 'supercategory': '' }
 ]
-
-def parse_xml(xml_path: str):
-    
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
-    all_instance = root.findall('.//Annotation/Regions/Region')
-    
-    regions = []
-    for item in all_instance:
-        inst_vertexes = item.find('Vertices')
-        vertices = inst_vertexes.findall('Vertex')
-        coords = np.zeros((len(vertices), 2))
-        for i, vertex in enumerate(vertices):
-            coords[i][0] = vertex.attrib["X"]
-            coords[i][1] = vertex.attrib["Y"]
-        regions.append(coords)
-
-    return regions
         
 
 def init_cls_anno(size, overlap):
 
     for mode in modes:
-        img_dir = f'{root}/{mode}/img_dir'
-        ann_dir = f'{root}/{mode}/annotations'
+        img_dir = f'{root}/{mode}'
+        ann_dir = f'{root}/{mode}_labels'
         
         save_root_dir = f'{root}/{mode}_p{size}'
         if overlap > 0:
@@ -88,27 +47,20 @@ def init_cls_anno(size, overlap):
         all_imgs = os.listdir(ann_dir)
         for filename in tqdm(all_imgs):
             pure_filename = filename.split('.')[0]
-            ann_path = f'{ann_dir}/{pure_filename}.xml'
+            ann_path = f'{ann_dir}/{pure_filename}.png'
             img_path = f'{img_dir}/{pure_filename}.png'
             img = cv2.imread(img_path)
             h,w = img.shape[0], img.shape[1]
-            regions = parse_xml(ann_path)
+
+            image_mask = cv2.imread(ann_path, cv2.IMREAD_GRAYSCALE)
+    
             # all pixes default background
             panoptic_ann = np.zeros((h, w, 3), dtype=np.int16)
             panoptic_ann[:, :, 0] = BACKGROUND_ID
-            for iid,pts in enumerate(regions):
-                vertex_row_coords = pts[:, 0]
-                vertex_col_coords = pts[:, 1]
-                fill_row_coords, fill_col_coords = draw.polygon(
-                    vertex_col_coords, vertex_row_coords, (h,w)
-                )
-                panoptic_ann[fill_row_coords, fill_col_coords] = (CELL_ID, iid+1, 0)
+            panoptic_ann[image_mask == 255] = [FOREGROUND_ID, 1, 0]
 
             img_t = torch.as_tensor(img).permute(2,0,1).contiguous()    # (3,h,w)
-            img_t = F.interpolate(img_t.float().unsqueeze(0), (1024, 1024), mode="bilinear").squeeze(0)
-            
             ann_t = torch.as_tensor(panoptic_ann).permute(2,0,1).contiguous()    # (3,h,w)
-            ann_t = F.interpolate(ann_t.float().unsqueeze(0), (1024, 1024), mode="nearest").squeeze(0)
 
             img_ann_t = torch.cat([img_t, ann_t], dim=0)    # (6,h,w)
             if overlap > 0:
@@ -141,6 +93,6 @@ def init_cls_anno(size, overlap):
 
 
 if __name__ == '__main__':
-    size = 256
+    size = 500
     init_cls_anno(size, overlap=0)
-    init_cls_anno(size, overlap=64)
+    # init_cls_anno(size, overlap=64)

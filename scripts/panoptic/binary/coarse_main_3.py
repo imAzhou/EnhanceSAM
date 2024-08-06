@@ -14,10 +14,12 @@ from mmdet.evaluation.functional import INSTANCE_OFFSET
 from scipy.ndimage import binary_dilation, binary_erosion
 import matplotlib.pyplot as plt
 import cv2
+from scipy.optimize import linear_sum_assignment
 
 from utils.ssim_loss import SSIM
 from utils.cl_dice import soft_dice_cldice
 from utils.losses import BoundaryDoULoss
+from prettytable import PrettyTable
 
 parser = argparse.ArgumentParser()
 
@@ -52,6 +54,109 @@ def onehot2instmask(onehot_mask, with_boundary=False):
         return instmask, inst_boundary_mask
     
     return instmask
+
+def get_fast_pq(true, pred, match_iou=0.5):
+        """`match_iou` is the IoU threshold level to determine the pairing between
+        GT instances `p` and prediction instances `g`. `p` and `g` is a pair
+        if IoU > `match_iou`. However, pair of `p` and `g` must be unique 
+        (1 prediction instance to 1 GT instance mapping).
+
+        If `match_iou` < 0.5, Munkres assignment (solving minimum weight matching
+        in bipartite graphs) is caculated to find the maximal amount of unique pairing. 
+
+        If `match_iou` >= 0.5, all IoU(p,g) > 0.5 pairing is proven to be unique and
+        the number of pairs is also maximal.    
+        
+        Fast computation requires instance IDs are in contiguous orderding 
+        i.e [1, 2, 3, 4] not [2, 3, 6, 10]. Please call `remap_label` beforehand 
+        and `by_size` flag has no effect on the result.
+
+        Returns:
+            [dq, sq, pq]: measurement statistic
+
+            [paired_true, paired_pred, unpaired_true, unpaired_pred]: 
+                        pairing information to perform measurement
+                        
+        """
+        assert match_iou >= 0.0, "Cant' be negative"
+
+        true = np.copy(true)
+        pred = np.copy(pred)
+        true_id_list = list(np.unique(true))
+        pred_id_list = list(np.unique(pred))
+
+        true_masks = [
+            None,
+        ]
+        for t in true_id_list[1:]:
+            t_mask = np.array(true == t, np.uint8)
+            true_masks.append(t_mask)
+
+        pred_masks = [
+            None,
+        ]
+        for p in pred_id_list[1:]:
+            p_mask = np.array(pred == p, np.uint8)
+            pred_masks.append(p_mask)
+
+        # prefill with value
+        pairwise_iou = np.zeros(
+            [len(true_id_list) - 1, len(pred_id_list) - 1], dtype=np.float64
+        )
+
+        # caching pairwise iou
+        for true_id in true_id_list[1:]:  # 0-th is background
+            t_mask = true_masks[true_id]
+            pred_true_overlap = pred[t_mask > 0]
+            pred_true_overlap_id = np.unique(pred_true_overlap)
+            pred_true_overlap_id = list(pred_true_overlap_id)
+            for pred_id in pred_true_overlap_id:
+                if pred_id == 0:  # ignore
+                    continue  # overlaping background
+                p_mask = pred_masks[pred_id]
+                total = (t_mask + p_mask).sum()
+                inter = (t_mask * p_mask).sum()
+                iou = inter / (total - inter)
+                pairwise_iou[true_id - 1, pred_id - 1] = iou
+        #
+        if match_iou >= 0.5:
+            paired_iou = pairwise_iou[pairwise_iou > match_iou]
+            pairwise_iou[pairwise_iou <= match_iou] = 0.0
+            paired_true, paired_pred = np.nonzero(pairwise_iou)
+            paired_iou = pairwise_iou[paired_true, paired_pred]
+            paired_true += 1  # index is instance id - 1
+            paired_pred += 1  # hence return back to original
+        else:  # * Exhaustive maximal unique pairing
+            #### Munkres pairing with scipy library
+            # the algorithm return (row indices, matched column indices)
+            # if there is multiple same cost in a row, index of first occurence
+            # is return, thus the unique pairing is ensure
+            # inverse pair to get high IoU as minimum
+            paired_true, paired_pred = linear_sum_assignment(-pairwise_iou)
+            ### extract the paired cost and remove invalid pair
+            paired_iou = pairwise_iou[paired_true, paired_pred]
+
+            # now select those above threshold level
+            # paired with iou = 0.0 i.e no intersection => FP or FN
+            paired_true = list(paired_true[paired_iou > match_iou] + 1)
+            paired_pred = list(paired_pred[paired_iou > match_iou] + 1)
+            paired_iou = paired_iou[paired_iou > match_iou]
+
+        # get the actual FP and FN
+        unpaired_true = [idx for idx in true_id_list[1:] if idx not in paired_true]
+        unpaired_pred = [idx for idx in pred_id_list[1:] if idx not in paired_pred]
+        # print(paired_iou.shape, paired_true.shape, len(unpaired_true), len(unpaired_pred))
+
+        #
+        tp = len(paired_true)
+        fp = len(unpaired_pred)
+        fn = len(unpaired_true)
+        # get the F1-score i.e DQ
+        dq = tp / (tp + 0.5 * fp + 0.5 * fn + 1e-6)
+        # get the SQ, no paired has 0 iou so not impact
+        sq = paired_iou.sum() / (tp + 1.0e-6)
+
+        return [dq, sq, dq * sq], [paired_true, paired_pred, unpaired_true, unpaired_pred]
 
 def gene_insts_color(data_sample, pan_result, boundary):
     img_path = data_sample.img_path
@@ -148,7 +253,7 @@ def draw_pred(
     plt.savefig(f'{image_name}')
     plt.close()
 
-def train_one_epoch(model: TwoStageNet, train_loader, optimizer, logger, cfg):
+def train_one_epoch(model: TwoStageNet, train_loader, optimizer, logger, epoch_num, cfg):
 
     model.train()
     len_loader = len(train_loader)
@@ -194,57 +299,27 @@ def train_one_epoch(model: TwoStageNet, train_loader, optimizer, logger, cfg):
             info_str = f'iteration {i_batch+1}/{len_loader}, bce_dice_loss: {bce_dice_loss.item():.6f}'
             logger.info(info_str)
 
-def val_one_epoch(model: TwoStageNet, val_loader, evaluators, cfg):
+def val_one_epoch(model: TwoStageNet, val_loader, evaluators, epoch_num, cfg):
     
     model.eval()
+    all_PQs = []    #[[dq, sq, pq],...,[dq, sq, pq]]
     for i_batch, sampled_batch in enumerate(tqdm(val_loader, ncols=70)):
-        bs_gt_mask = []
-        origin_h,origin_w = sampled_batch['data_samples'][0].ori_shape
-        for data_sample in sampled_batch['data_samples']:
-            gt_sem_seg = data_sample.gt_sem_seg.sem_seg
-            bs_gt_mask.append(gt_sem_seg)
-
-        bs_gt_mask = torch.cat(bs_gt_mask, dim = 0).to(device)
         outputs = model.forward_coarse(sampled_batch)
         logits = outputs['logits_origin']  # (bs or k_prompt, 3, 256, 256)
 
-        all_datainfo = []
         for idx,datainfo in enumerate(sampled_batch['data_samples']):
             gt_inst_seg = datainfo.gt_instances.masks.masks  # np.array, (inst_nums, h, w)
             gt_inst_mask,gt_boundary_mask = onehot2instmask(gt_inst_seg,with_boundary=True)    # tensor, (h, w)
-            gt_sem_seg = datainfo.gt_sem_seg.sem_seg.squeeze(0)    # tensor, (1, h, w) pixel value is cls id
 
             pred_cell_mask = (logits[idx,0,:,:].detach() > 0).type(torch.uint8)
             pred_boundary_mask = logits[idx,1,:,:].detach() > 0
 
             pred_cell_mask[pred_boundary_mask] = 0
             pred_inst_mask = evaluators['inst_evaluator'].find_connect(pred_cell_mask, dilation=True)
-            evaluators['inst_evaluator'].process(gt_inst_mask, pred_inst_mask)
-
-            # panoptic_seg = torch.full((origin_h,origin_w), 0, dtype=torch.int32, device=device)
-            # if np.sum(pred_inst_mask) > 0:
-            #     iid = np.unique(pred_inst_mask)
-            #     for i in iid[1:]:
-            #         mask = pred_inst_mask == i
-            #         panoptic_seg[mask] = (1 + i * INSTANCE_OFFSET)
-            # datainfo.pred_panoptic_seg = PixelData(sem_seg=panoptic_seg[None])
-            pred_cell_mask = torch.as_tensor(pred_inst_mask > 0).type(torch.uint8)
-            datainfo.pred_sem_seg = PixelData(sem_seg=pred_cell_mask[None])
-            all_datainfo.append(datainfo.to_dict())
-        
-        evaluators['semantic_evaluator'].process(None, all_datainfo)
-        # evaluators['panoptic_evaluator'].process(None, all_datainfo)
-    
-    total_datas = len(val_loader)*cfg.val_bs
-    semantic_metrics = evaluators['semantic_evaluator'].evaluate(total_datas)
-    # panoptic_metrics = evaluators['panoptic_evaluator'].evaluate(total_datas)
-    inst_metrics = evaluators['inst_evaluator'].evaluate(total_datas)
-    metrics = dict(
-        semantic = semantic_metrics,
-        # panoptic = panoptic_metrics,
-        inst = inst_metrics,
-    )
-    return metrics
+            PQs,_ = get_fast_pq(gt_inst_mask, pred_inst_mask)
+            all_PQs.append(PQs)
+    mean_PQs = np.array(all_PQs).mean(axis=0)
+    return mean_PQs
 
 
 def main(logger_name, cfg):
@@ -281,7 +356,7 @@ def main(logger_name, cfg):
         # train
         current_lr = optimizer.param_groups[0]["lr"]
         logger.info(f"epoch: {epoch_num}, learning rate: {current_lr:.6f}")
-        train_one_epoch(model, train_dataloader, optimizer, logger, cfg)
+        train_one_epoch(model, train_dataloader, optimizer, logger, epoch_num, cfg)
         lr_scheduler.step()
         if cfg.save_each_epoch:
             save_mode_path = os.path.join(pth_save_dir, 'epoch_' + str(epoch_num) + '.pth')
@@ -289,8 +364,17 @@ def main(logger_name, cfg):
             logger.info(f"save model to {save_mode_path}")
 
         # val
-        metrics = val_one_epoch(model, val_dataloader, evaluators, cfg)
-        best_score = metrics['inst']['PQ']
+        table_data = PrettyTable()
+        # PQs: [dq, sq, pq]
+        PQs = val_one_epoch(model, val_dataloader, evaluators, epoch_num, cfg)
+        metrics = dict(
+            PQ = PQs[2], SQ = PQs[1], DQ = PQs[0],
+        )
+        for key,value in metrics.items():
+            table_data.add_column(key,[f'{value:.4f}'])
+        logger.info('\n' + table_data.get_string())
+        
+        best_score = PQs[2] # PQ
         # logger.info(f'epoch: {epoch_num} ' + str(metrics) + '\n')
         if best_score > max_value:
             max_value = best_score
@@ -334,10 +418,9 @@ if __name__ == "__main__":
 
 
 '''
-# 02: 不更新 output_upscaling, 没有 ssim loss, mobilev2 的 inverted residual with linear bottleneck 结构(nn.ReLU)
-# 03: 使用 BIoU_loss
-python scripts/panoptic/binary/coarse_main_2.py \
-    configs/datasets/monuseg.py \
-    --record_save_dir logs/0_monuseg_02 \
+python scripts/panoptic/binary/coarse_main_3.py \
+    configs/datasets/pannuke_binary.py \
+    --record_save_dir logs/0_pannuke_binary_02 \
+    --print_interval 20
     --save_each_epoch
 '''

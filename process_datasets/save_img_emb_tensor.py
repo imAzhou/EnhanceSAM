@@ -11,9 +11,9 @@ import numpy as np
 
 seed = 1234
 device = 'cuda:0'
-dataset_config_file = 'configs/datasets/monuseg.py'
+dataset_config_file = 'configs/datasets/pannuke_binary.py'
 sam_ckpt_path = '/x22201018/codes/SAM/checkpoints_sam/sam_vit_h_4b8939.pth'
-
+save_inners = [0]
 
 
 if __name__ == "__main__":
@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
             with torch.no_grad():
                 # input_images.shape: [bs, 3, 1024, 1024]
-                input_images = sam_model.preprocess(image_tensor)
+                input_images = sam_model.preprocess(image_tensor_rgb)
                 # bs_image_embedding.shape: [bs, c=256, h=64, w=64]
                 bs_image_embedding, bs_inner_feats = sam_model.image_encoder(input_images, need_inter=True)
                 bs_inner_feats = torch.stack(bs_inner_feats,dim=0).permute(1,0,2,3,4)
@@ -57,7 +57,8 @@ if __name__ == "__main__":
                 tensor_save_dir += '/img_tensor'
                 os.makedirs(tensor_save_dir, exist_ok=True)
                 torch.save(img_emb_tensor, f'{tensor_save_dir}/{pure_name}.pt')
-                for idx,inner in enumerate(img_emb_tensor_inner):
+                for idx in save_inners:
+                    inner = img_emb_tensor_inner[idx]
                     torch.save(inner, f'{tensor_save_dir}/{pure_name}_inner_{idx}.pt')
 
 

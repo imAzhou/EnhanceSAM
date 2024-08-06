@@ -1,10 +1,10 @@
 from process_datasets.twochannel2coco_panoptic import converter
 
-data_root = '/x22201018/datasets/MedicalDatasets/MoNuSeg'
+data_root = '/x22201018/datasets/MedicalDatasets/CPM17'
 size = 512
 
 for overlap in [0]:
-    for mode in ['train', 'val', 'test']:
+    for mode in ['train', 'test']:
         save_root_dir = f'{data_root}/{mode}_p{size}'
         if overlap > 0:
             save_root_dir = f'{data_root}/{mode}_p{size}_o{overlap}'
